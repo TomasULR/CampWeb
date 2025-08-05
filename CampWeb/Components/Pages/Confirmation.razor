@@ -1,0 +1,210 @@
+﻿@page "/potvrzeni/{accessCode}"
+@using CampWeb.Models
+@using CampWeb.Services
+@inject ICampService CampService
+@inject NavigationManager Navigation
+
+<PageTitle>Potvrzení registrace - Letní Tábory Plzeň</PageTitle>
+
+<div class="container my-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card confirmation-card">
+                <div class="card-body text-center">
+                    <div class="success-icon mb-4">
+                        <i class="fas fa-check-circle text-success"></i>
+                    </div>
+                    
+                    <h2 class="text-success mb-4">Registrace byla úspěšně dokončena!</h2>
+                    
+                    <div class="confirmation-details">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <div class="info-card">
+                                    <h5><i class="fas fa-user me-2"></i>Přístupový kód</h5>
+                                    <code class="fs-4">@AccessCode</code>
+                                    <p class="small text-muted mt-2">Uschovejte si tento kód pro přístup k fotkám a informacím z tábora</p>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <div class="info-card">
+                                    <h5><i class="fas fa-envelope me-2"></i>E-mail</h5>
+                                    <p>Na váš e-mail jsme odeslali potvrzení s podrobnostmi o registraci a pokyny k táboru.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    @if (camp != null)
+                    {
+                        <div class="camp-summary mt-4">
+                            <h4>Shrnutí registrace</h4>
+                            <div class="card">
+                                <div class="card-body">
+                                    <div class="row text-start">
+                                        <div class="col-md-8">
+                                            <h5>@camp.Name</h5>
+                                            <p class="text-muted mb-2">
+                                                <i class="fas fa-map-marker-alt me-1"></i>@camp.Location
+                                            </p>
+                                            <p class="mb-2">
+                                                <i class="fas fa-calendar-alt me-1"></i>
+                                                @camp.StartDate.ToString("dd.MM.yyyy") - @camp.EndDate.ToString("dd.MM.yyyy")
+                                            </p>
+                                            <p class="mb-0">
+                                                <i class="fas fa-users me-1"></i>Věk: @camp.AgeGroup let
+                                            </p>
+                                        </div>
+                                        <div class="col-md-4 text-end">
+                                            <h4 class="text-primary">@camp.Price Kč</h4>
+                                            <span class="badge bg-success">Zaplaceno</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+                    <div class="next-steps mt-5">
+                        <h4>Co dál?</h4>
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <div class="step-card">
+                                    <i class="fas fa-envelope-open text-primary fs-2 mb-3"></i>
+                                    <h6>1. Zkontrolujte e-mail</h6>
+                                    <p class="small">Obdržíte podrobné informace o táboru a seznamu věcí k balení</p>
+                                </div>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <div class="step-card">
+                                    <i class="fas fa-images text-primary fs-2 mb-3"></i>
+                                    <h6>2. Sledujte fotky</h6>
+                                    <p class="small">Během tábora budete moci sledovat fotky a zprávy pomocí přístupového kódu</p>
+                                </div>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <div class="step-card">
+                                    <i class="fas fa-phone text-primary fs-2 mb-3"></i>
+                                    <h6>3. Kontakt</h6>
+                                    <p class="small">V případě dotazů nás kontaktujte na +420 123 456 789</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="action-buttons mt-4">
+                        <a href="/fotky/@AccessCode" class="btn btn-primary me-3">
+                            <i class="fas fa-images me-2"></i>Přístup k fotkám
+                        </a>
+                        <a href="/" class="btn btn-outline-primary">
+                            <i class="fas fa-home me-2"></i>Zpět na hlavní stránku
+                        </a>
+                    </div>
+
+                    <div class="contact-info mt-4 pt-4 border-top">
+                        <h6>Kontaktní informace</h6>
+                        <p class="mb-1"><i class="fas fa-envelope me-2"></i>info@letnítabory.cz</p>
+                        <p class="mb-1"><i class="fas fa-phone me-2"></i>+420 123 456 789</p>
+                        <p class="mb-0"><i class="fas fa-clock me-2"></i>Po-Pá: 9:00-17:00</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .confirmation-card {
+        box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        border: none;
+        border-radius: 15px;
+    }
+
+    .success-icon i {
+        font-size: 4rem;
+    }
+
+    .info-card {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 10px;
+        height: 100%;
+    }
+
+    .info-card h5 {
+        color: var(--primary-color);
+        margin-bottom: 15px;
+    }
+
+    .camp-summary .card {
+        background: rgba(44, 90, 160, 0.05);
+        border: 1px solid rgba(44, 90, 160, 0.1);
+    }
+
+    .step-card {
+        text-align: center;
+        padding: 20px;
+        height: 100%;
+    }
+
+    .step-card h6 {
+        color: var(--primary-color);
+        margin-bottom: 10px;
+    }
+
+    .contact-info {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 10px;
+        margin-top: 20px;
+    }
+
+    .contact-info h6 {
+        color: var(--primary-color);
+        margin-bottom: 15px;
+    }
+
+    code {
+        background: rgba(44, 90, 160, 0.1);
+        color: var(--primary-color);
+        padding: 5px 10px;
+        border-radius: 5px;
+        font-weight: bold;
+        letter-spacing: 1px;
+    }
+
+    @@media (max-width: 768px) {
+        .success-icon i {
+            font-size: 3rem;
+        }
+        
+        .confirmation-card {
+            margin: 20px 0;
+        }
+        
+        .action-buttons .btn {
+            width: 100%;
+            margin-bottom: 10px;
+        }
+    }
+</style>
+
+@code {
+    [Parameter] public string AccessCode { get; set; } = "";
+    
+    private Camp? camp;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrEmpty(AccessCode))
+        {
+            Navigation.NavigateTo("/");
+            return;
+        }
+
+        // In a real app, you would look up the registration by access code
+        // For demo, we'll use the first camp
+        var camps = await CampService.GetAllCampsAsync();
+        camp = camps.FirstOrDefault();
+    }
+}

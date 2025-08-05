@@ -1,0 +1,287 @@
+﻿@page "/prihlaseni"
+@page "/Account/Login"
+@using Microsoft.AspNetCore.Identity
+@inject SignInManager<ApplicationUser> SignInManager
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Přihlášení - Letní Tábory Plzeň</PageTitle>
+
+<div class="container my-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="text-center mb-5">
+                <h1>Přihlášení k účtu</h1>
+                <p class="lead text-muted">Přístup k informacím o vašem táboru</p>
+            </div>
+
+            <div class="row">
+                <!-- Access with Code -->
+                <div class="col-md-6 mb-4">
+                    <div class="card h-100">
+                        <div class="card-body text-center">
+                            <i class="fas fa-key text-primary mb-3" style="font-size: 3rem;"></i>
+                            <h4>Přístupový kód</h4>
+                            <p class="text-muted mb-4">Máte přístupový kód z registrace? Zadejte ho zde pro přístup k fotkám a informacím z tábora.</p>
+                            
+                            <div class="mb-3">
+                                <input type="text" class="form-control form-control-lg text-center" 
+                                       @bind="accessCode" @onkeypress="HandleKeyPress"
+                                       placeholder="XXXXXXXX" maxlength="8" 
+                                       style="letter-spacing: 2px; font-family: monospace;">
+                            </div>
+                            
+                            @if (showCodeError)
+                            {
+                                <div class="alert alert-danger">
+                                    Neplatný přístupový kód
+                                </div>
+                            }
+                            
+                            <button class="btn btn-primary w-100" @onclick="ValidateAccessCode" disabled="@isValidating">
+                                @if (isValidating)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-2"></span>
+                                }
+                                <i class="fas fa-sign-in-alt me-2"></i>Přihlásit se
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Parent Login -->
+                <div class="col-md-6 mb-4">
+                    <div class="card h-100">
+                        <div class="card-body text-center">
+                            <i class="fas fa-user text-success mb-3" style="font-size: 3rem;"></i>
+                            <h4>Rodičovský účet</h4>
+                            <p class="text-muted mb-4">Přihlášení pro rodiče s e-mailem a heslem pro plný přístup k informacím.</p>
+                            
+                            <EditForm Model="loginModel" OnValidSubmit="HandleParentLogin">
+                                <DataAnnotationsValidator />
+                                
+                                <div class="mb-3">
+                                    <InputText @bind-Value="loginModel.Email" class="form-control" 
+                                               placeholder="váš-email@příklad.cz" type="email" />
+                                    <ValidationMessage For="@(() => loginModel.Email)" class="text-danger" />
+                                </div>
+                                <div class="mb-3">
+                                    <InputText @bind-Value="loginModel.Password" class="form-control" 
+                                               placeholder="Heslo" type="password" />
+                                    <ValidationMessage For="@(() => loginModel.Password)" class="text-danger" />
+                                </div>
+                                
+                                <div class="mb-3 form-check">
+                                    <InputCheckbox @bind-Value="loginModel.RememberMe" class="form-check-input" id="rememberMe" />
+                                    <label class="form-check-label" for="rememberMe">Zapamatovat si mě</label>
+                                </div>
+                                
+                                @if (showLoginError)
+                                {
+                                    <div class="alert alert-danger">
+                                        @loginErrorMessage
+                                    </div>
+                                }
+                                
+                                <button type="submit" class="btn btn-success w-100" disabled="@isLoggingIn">
+                                    @if (isLoggingIn)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-2"></span>
+                                    }
+                                    <i class="fas fa-sign-in-alt me-2"></i>Přihlásit se
+                                </button>
+                            </EditForm>
+                            
+                            <div class="mt-3">
+                                <a href="/registrace" class="text-decoration-none">Nemáte účet? Zaregistrujte se</a>
+                                <br>
+                                <a href="/zapomenute-heslo" class="text-muted small">Zapomenuté heslo?</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Help Section -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-question-circle me-2"></i>Potřebujete pomoc?</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <h6><i class="fas fa-search me-2"></i>Nenašli jste přístupový kód?</h6>
+                            <p class="small text-muted">Přístupový kód jste obdrželi e-mailem po dokončení registrace. Zkontrolujte i složku spam.</p>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <h6><i class="fas fa-user-plus me-2"></i>Ještě se neregistrovali?</h6>
+                            <p class="small text-muted">
+                                <a href="/tabory" class="text-decoration-none">Vyberte si tábor</a> 
+                                a dokončete registraci pro získání přístupového kódu.
+                            </p>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <h6><i class="fas fa-phone me-2"></i>Kontaktujte nás</h6>
+                            <p class="small text-muted">
+                                E-mail: info@letnítabory.cz<br>
+                                Telefon: +420 123 456 789
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Demo Credentials -->
+            @if (Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development")
+            {
+                <div class="alert alert-info mt-4">
+                    <h6><i class="fas fa-info-circle me-2"></i>Demo přihlašovací údaje:</h6>
+                    <p class="mb-1"><strong>Rodič:</strong> rodic@example.com / Heslo123!</p>
+                    <p class="mb-1"><strong>Admin:</strong> admin@letnítabory.cz / Admin123!</p>
+                    <p class="mb-0"><strong>Přístupový kód:</strong> DEMO1234 (jakýkoliv 8-znakový kód)</p>
+                </div>
+            }
+
+            <!-- Features Preview -->
+            <div class="mt-5">
+                <h3 class="text-center mb-4">Co vás po přihlášení čeká</h3>
+                <div class="row">
+                    <div class="col-md-4 text-center mb-4">
+                        <i class="fas fa-images text-primary mb-3" style="font-size: 2rem;"></i>
+                        <h6>Fotogalerie</h6>
+                        <p class="small text-muted">Denně aktualizované fotky z tábora</p>
+                    </div>
+                    <div class="col-md-4 text-center mb-4">
+                        <i class="fas fa-broadcast-tower text-primary mb-3" style="font-size: 2rem;"></i>
+                        <h6>Živé zprávy</h6>
+                        <p class="small text-muted">Aktuální informace o průběhu tábora</p>
+                    </div>
+                    <div class="col-md-4 text-center mb-4">
+                        <i class="fas fa-download text-primary mb-3" style="font-size: 2rem;"></i>
+                        <h6>Stahování</h6>
+                        <p class="small text-muted">Stáhněte si všechny fotky najednou</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .card {
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+    }
+
+    .form-control:focus {
+        border-color: #2c5aa0;
+        box-shadow: 0 0 0 0.2rem rgba(44, 90, 160, 0.25);
+    }
+
+    input[type="text"].text-center {
+        text-transform: uppercase;
+    }
+
+    .spinner-border-sm {
+        width: 1rem;
+        height: 1rem;
+    }
+</style>
+
+@code {
+    private string accessCode = "";
+    private LoginViewModel loginModel = new();
+    private bool showCodeError = false;
+    private bool showLoginError = false;
+    private bool isValidating = false;
+    private bool isLoggingIn = false;
+    private string loginErrorMessage = "";
+
+    private async Task HandleKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await ValidateAccessCode();
+        }
+    }
+
+    private async Task ValidateAccessCode()
+    {
+        if (string.IsNullOrWhiteSpace(accessCode))
+        {
+            showCodeError = true;
+            return;
+        }
+
+        isValidating = true;
+        showCodeError = false;
+        StateHasChanged();
+
+        try
+        {
+            // Simulate validation delay
+            await Task.Delay(1000);
+
+            // Simple validation - in real app, check against database
+            if (accessCode.Trim().Length == 8)
+            {
+                Navigation.NavigateTo($"/fotky/{accessCode.Trim().ToUpper()}");
+            }
+            else
+            {
+                showCodeError = true;
+            }
+        }
+        finally
+        {
+            isValidating = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleParentLogin()
+    {
+        isLoggingIn = true;
+        showLoginError = false;
+        loginErrorMessage = "";
+        StateHasChanged();
+
+        try
+        {
+            var result = await SignInManager.PasswordSignInAsync(loginModel.Email, loginModel.Password, loginModel.RememberMe, lockoutOnFailure: false);
+            
+            if (result.Succeeded)
+            {
+                await JSRuntime.InvokeVoidAsync("showAlert", "Přihlášení úspěšné! Přesměrování...");
+                
+                // Redirect to return URL or default page
+                var returnUrl = Navigation.GetUriWithQueryParameter("returnUrl", (string?)null);
+                Navigation.NavigateTo(returnUrl ?? "/", forceLoad: true);
+            }
+            else if (result.IsLockedOut)
+            {
+                loginErrorMessage = "Účet je dočasně zablokován kvůli mnoha neúspěšným pokusům o přihlášení.";
+                showLoginError = true;
+            }
+            else
+            {
+                loginErrorMessage = "Neplatné přihlašovací údaje. Zkontrolujte email a heslo.";
+                showLoginError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            loginErrorMessage = "Došlo k chybě při přihlašování. Zkuste to prosím znovu.";
+            showLoginError = true;
+        }
+        finally
+        {
+            isLoggingIn = false;
+            StateHasChanged();
+        }
+    }
+}

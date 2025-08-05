@@ -1,0 +1,357 @@
+﻿@page "/fotky/{accessCode?}"
+@using CampWeb.Models
+@inject IPhotoService PhotoService
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Fotky z tábora - Letní Tábory Plzeň</PageTitle>
+
+<div class="container my-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-10">
+            @if (string.IsNullOrEmpty(AccessCode) || !isAuthenticated)
+            {
+                <!-- Access Code Input -->
+                <div class="card access-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-images text-primary fs-1 mb-4"></i>
+                        <h2 class="mb-4">Přístup k fotkám z tábora</h2>
+                        <p class="lead mb-4">Zadejte přístupový kód, který jste obdrželi při registraci</p>
+                        
+                        <div class="row justify-content-center">
+                            <div class="col-md-6">
+                                <div class="input-group mb-3">
+                                    <input type="text" class="form-control form-control-lg text-center" 
+                                           @bind="inputAccessCode" @onkeypress="HandleKeyPress"
+                                           placeholder="Zadejte přístupový kód" style="letter-spacing: 2px;">
+                                    <button class="btn btn-primary" @onclick="ValidateAccessCode">
+                                        <i class="fas fa-sign-in-alt"></i>
+                                    </button>
+                                </div>
+                                @if (showError)
+                                {
+                                    <div class="alert alert-danger">
+                                        Neplatný přístupový kód. Zkuste to znovu.
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <!-- Photo Gallery -->
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div>
+                        <h2><i class="fas fa-images me-2"></i>Fotky z tábora</h2>
+                        <p class="text-muted">@campName</p>
+                    </div>
+                    <div>
+                        <button class="btn btn-outline-primary me-2" @onclick="RefreshPhotos">
+                            <i class="fas fa-sync-alt"></i> Obnovit
+                        </button>
+                        <button class="btn btn-primary" @onclick="DownloadAll">
+                            <i class="fas fa-download me-2"></i>Stáhnout vše
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Live Updates -->
+                @if (liveUpdates.Any())
+                {
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="fas fa-broadcast-tower me-2"></i>Živé zprávy</h5>
+                        </div>
+                        <div class="card-body">
+                            @foreach (var update in liveUpdates.Take(3))
+                            {
+                                <div class="live-update mb-3">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <h6>@update.Title</h6>
+                                        <small class="text-muted">@update.CreatedAt.ToString("dd.MM HH:mm")</small>
+                                    </div>
+                                    <p>@update.Content</p>
+                                    @if (!string.IsNullOrEmpty(update.PhotoUrl))
+                                    {
+                                        <img src="@update.PhotoUrl" alt="Foto z tábora" 
+                                             class="img-fluid rounded mt-2 cursor-pointer" 
+                                             style="max-height: 200px;" @onclick="() => OpenLightbox(update.PhotoUrl)" />
+                                    }
+                                </div>
+                                @if (update != liveUpdates.Take(3).Last())
+                                {
+                                    <hr />
+                                }
+                            }
+                        </div>
+                    </div>
+                }
+
+                <!-- Photo Gallery Grid -->
+                <div class="photo-gallery">
+                    @if (photos.Any())
+                    {
+                        <div class="row g-3">
+                            @foreach (var photo in photos)
+                            {
+                                <div class="col-lg-3 col-md-4 col-sm-6">
+                                    <div class="photo-item">
+                                        <img src="@photo.FileName" alt="@photo.Description" 
+                                             class="img-fluid rounded cursor-pointer"
+                                             @onclick="() => OpenLightbox(photo.FileName)" />
+                                        <div class="photo-overlay">
+                                            <div class="photo-actions">
+                                                <button class="btn btn-light btn-sm" @onclick="() => OpenLightbox(photo.FileName)">
+                                                    <i class="fas fa-search-plus"></i>
+                                                </button>
+                                                <button class="btn btn-light btn-sm" @onclick="() => DownloadPhoto(photo.FileName)">
+                                                    <i class="fas fa-download"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(photo.Description))
+                                        {
+                                            <p class="photo-description">@photo.Description</p>
+                                        }
+                                        <small class="text-muted">@photo.UploadDate.ToString("dd.MM.yyyy")</small>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-center py-5">
+                            <i class="fas fa-camera text-muted fs-1 mb-3"></i>
+                            <h4 class="text-muted">Zatím žádné fotky</h4>
+                            <p class="text-muted">Fotky budou přidávány během konání tábora</p>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<!-- Lightbox Modal -->
+<div class="modal fade" id="lightboxModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content bg-transparent border-0">
+            <div class="modal-body p-0 text-center">
+                <button type="button" class="btn-close btn-close-white position-absolute top-0 end-0 m-3" 
+                        data-bs-dismiss="modal" style="z-index: 1060;"></button>
+                <img src="@selectedPhoto" alt="Foto z tábora" class="img-fluid rounded" style="max-height: 80vh;" />
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .access-card {
+        max-width: 600px;
+        margin: 50px auto;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        border: none;
+        border-radius: 15px;
+    }
+
+    .photo-item {
+        position: relative;
+        transition: transform 0.3s ease;
+    }
+
+    .photo-item:hover {
+        transform: translateY(-5px);
+    }
+
+    .photo-item img {
+        width: 100%;
+        height: 200px;
+        object-fit: cover;
+    }
+
+    .photo-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        border-radius: 0.375rem;
+    }
+
+    .photo-item:hover .photo-overlay {
+        opacity: 1;
+    }
+
+    .photo-actions {
+        display: flex;
+        gap: 10px;
+    }
+
+    .photo-description {
+        margin-top: 8px;
+        margin-bottom: 4px;
+        font-size: 0.9rem;
+    }
+
+    .cursor-pointer {
+        cursor: pointer;
+    }
+
+    .live-update {
+        border-left: 3px solid var(--primary-color);
+        padding-left: 15px;
+    }
+
+    .modal-content.bg-transparent {
+        background: transparent !important;
+        box-shadow: none;
+    }
+</style>
+
+@code {
+    [Parameter] public string? AccessCode { get; set; }
+    
+    private string inputAccessCode = "";
+    private bool isAuthenticated = false;
+    private bool showError = false;
+    private string campName = "";
+    private string selectedPhoto = "";
+    private List<CampPhoto> photos = new();
+    private List<LiveUpdate> liveUpdates = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrEmpty(AccessCode))
+        {
+            await ValidateAndLoadData(AccessCode);
+        }
+    }
+
+    private async Task HandleKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await ValidateAccessCode();
+        }
+    }
+
+    private async Task ValidateAccessCode()
+    {
+        if (string.IsNullOrWhiteSpace(inputAccessCode))
+        {
+            showError = true;
+            return;
+        }
+
+        await ValidateAndLoadData(inputAccessCode.Trim().ToUpper());
+    }
+
+    private async Task ValidateAndLoadData(string code)
+    {
+        // In a real app, validate the access code against database
+        // For demo, accept any 8-character code
+        if (code.Length == 8)
+        {
+            isAuthenticated = true;
+            showError = false;
+            AccessCode = code;
+            campName = "Dobrodružný tábor Šumava";
+            
+            await LoadPhotosAndUpdates();
+        }
+        else
+        {
+            showError = true;
+            isAuthenticated = false;
+        }
+        
+        StateHasChanged();
+    }
+
+    private async Task LoadPhotosAndUpdates()
+    {
+        // Load sample photos
+        photos = new List<CampPhoto>
+        {
+            new() 
+            { 
+                FileName = "https://images.unsplash.com/photo-1504851149312-7a075b496cc7?w=800", 
+                Description = "Ráno v táboře", 
+                UploadDate = DateTime.Now.AddDays(-2) 
+            },
+            new() 
+            { 
+                FileName = "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800", 
+                Description = "Turistika v lese", 
+                UploadDate = DateTime.Now.AddDays(-2) 
+            },
+            new() 
+            { 
+                FileName = "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800", 
+                Description = "Táborák", 
+                UploadDate = DateTime.Now.AddDays(-1) 
+            },
+            new() 
+            { 
+                FileName = "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=800", 
+                Description = "Sportovní aktivity", 
+                UploadDate = DateTime.Now.AddDays(-1) 
+            }
+        };
+
+        // Load sample live updates
+        liveUpdates = new List<LiveUpdate>
+        {
+            new() 
+            { 
+                Title = "Výlet na Šumavu", 
+                Content = "Dnes jsme vyrazili na krásný výlet do přírody. Počasí nám přálo!",
+                CreatedAt = DateTime.Now.AddHours(-3),
+                PhotoUrl = "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=400"
+            },
+            new() 
+            { 
+                Title = "Táborák", 
+                Content = "Večer jsme si rozdělali táborák a zpívali jsme písničky.",
+                CreatedAt = DateTime.Now.AddHours(-5),
+                PhotoUrl = "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400"
+            },
+            new() 
+            { 
+                Title = "Ranní rozcvička", 
+                Content = "Začínáme den sportovními aktivitami!",
+                CreatedAt = DateTime.Now.AddHours(-8)
+            }
+        };
+    }
+
+    private async Task RefreshPhotos()
+    {
+        await LoadPhotosAndUpdates();
+        await JSRuntime.InvokeVoidAsync("showAlert", "Fotky byly obnoveny!");
+    }
+
+    private async Task OpenLightbox(string photoUrl)
+    {
+        selectedPhoto = photoUrl;
+        await JSRuntime.InvokeVoidAsync("showModal", "lightboxModal");
+    }
+
+    private async Task DownloadPhoto(string photoUrl)
+    {
+        await JSRuntime.InvokeVoidAsync("downloadFile", photoUrl);
+    }
+
+    private async Task DownloadAll()
+    {
+        await JSRuntime.InvokeVoidAsync("showAlert", "Zahájeno stahování všech fotek...");
+    }
+}

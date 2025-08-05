@@ -1,0 +1,49 @@
+﻿@inject NavigationManager Navigation
+@inherits LayoutComponentBase
+
+<div class="page">
+    <main>
+        <div class="top-row px-4">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-campground me-2"></i>Letní Tábory Plzeň
+            </a>
+            <a class="nav-link @GetActiveClass("/")" href="/">Domů</a>
+            <a class="nav-link @GetActiveClass("/mapa")" href="/mapa">Mapa táborů</a>
+            <a class="nav-link @GetActiveClass("/tabory")" href="/tabory">Všechny tábory</a>
+            <a class="nav-link @GetActiveClass("/prihlaseni")" href="/prihlaseni">Přihlášení</a>
+
+        </div>
+        
+        <article class="content px-4">
+            @Body
+        </article>
+    </main>
+</div>
+
+<footer class="bg-dark text-white py-4 mt-5">
+    <div class="container">
+        <div class="row">
+            <div class="col-md-6">
+                <h6>Letní Tábory Plzeň</h6>
+                <p class="small">Kvalitní letní tábory pro děti v Plzeňském kraji</p>
+            </div>
+            <div class="col-md-6 text-end">
+                <p class="small mb-0">© 2025 Letní Tábory Plzeň</p>
+                <p class="small">Kontakt: info@letnítabory.cz | +420 123 456 789</p>
+            </div>
+        </div>
+    </div>
+</footer>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>
+
+@code {
+    private string GetActiveClass(string path)
+    {
+        return Navigation.Uri.EndsWith(path) ? "active" : "";
+    }
+}

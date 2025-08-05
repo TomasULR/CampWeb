@@ -1,0 +1,59 @@
+﻿@page "/odhlaseni"
+@page "/Account/Logout"
+@using Microsoft.AspNetCore.Identity
+@inject SignInManager<ApplicationUser> SignInManager
+@inject NavigationManager Navigation
+
+<PageTitle>Odhlášení - Letní Tábory Plzeň</PageTitle>
+
+<div class="container my-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6 text-center">
+            <div class="card">
+                <div class="card-body">
+                    <i class="fas fa-sign-out-alt text-primary mb-4" style="font-size: 4rem;"></i>
+                    
+                    @if (isLoggingOut)
+                    {
+                        <h2>Odhlašování...</h2>
+                        <div class="spinner-border text-primary mt-3" role="status">
+                            <span class="visually-hidden">Odhlašování...</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <h2>Byli jste úspěšně odhlášeni</h2>
+                        <p class="text-muted mb-4">Děkujeme za použití našich služeb.</p>
+                        
+                        <div class="d-flex gap-3 justify-content-center">
+                            <a href="/" class="btn btn-primary">
+                                <i class="fas fa-home me-2"></i>Hlavní stránka
+                            </a>
+                            <a href="/prihlaseni" class="btn btn-outline-primary">
+                                <i class="fas fa-sign-in-alt me-2"></i>Přihlásit se znovu
+                            </a>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool isLoggingOut = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await SignInManager.SignOutAsync();
+            await Task.Delay(1000); // Brief delay for UX
+        }
+        finally
+        {
+            isLoggingOut = false;
+            StateHasChanged();
+        }
+    }
+}

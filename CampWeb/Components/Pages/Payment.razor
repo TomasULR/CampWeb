@@ -1,0 +1,252 @@
+﻿@page "/platba/{accessCode}"
+@inject ICampService CampService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Platba - Letní Tábory Plzeň</PageTitle>
+
+<div class="container my-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            @if (camp == null)
+            {
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Načítání...</span>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="card payment-card">
+                    <div class="card-header bg-primary text-white">
+                        <h3 class="mb-0"><i class="fas fa-credit-card me-2"></i>Dokončení platby</h3>
+                    </div>
+                    <div class="card-body">
+                        <!-- Order Summary -->
+                        <div class="order-summary mb-4">
+                            <h5>Shrnutí objednávky</h5>
+                            <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+                                <div>
+                                    <strong>@camp.Name</strong>
+                                    <br>
+                                    <small class="text-muted">@camp.StartDate.ToString("dd.MM.yyyy") - @camp.EndDate.ToString("dd.MM.yyyy")</small>
+                                </div>
+                                <div class="text-end">
+                                    <strong>@camp.Price Kč</strong>
+                                </div>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center py-2">
+                                <span>Přístupový kód:</span>
+                                <code>@AccessCode</code>
+                            </div>
+                            <hr>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <h5>Celkem k úhradě:</h5>
+                                <h4 class="text-primary">@camp.Price Kč</h4>
+                            </div>
+                        </div>
+
+                        <!-- Payment Methods -->
+                        <div class="payment-methods mb-4">
+                            <h5>Způsob platby</h5>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <div class="payment-option @(selectedPaymentMethod == "card" ? "selected" : "")" 
+                                         @onclick='() => SelectPaymentMethod("card")'>
+                                        <i class="fas fa-credit-card"></i>
+                                        <span>Platební karta</span>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <div class="payment-option @(selectedPaymentMethod == "bank" ? "selected" : "")" 
+                                         @onclick='() => SelectPaymentMethod("bank")'>
+                                        <i class="fas fa-university"></i>
+                                        <span>Bankovní převod</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        @if (selectedPaymentMethod == "card")
+                        {
+                            <!-- Card Payment Form -->
+                            <div class="card-payment-form">
+                                <h5>Údaje platební karty</h5>
+                                <EditForm Model="cardPayment" OnValidSubmit="ProcessCardPayment">
+                                    <div class="mb-3">
+                                        <label class="form-label">Číslo karty</label>
+                                        <InputText @bind-Value="cardPayment.CardNumber" class="form-control" placeholder="1234 5678 9012 3456" />
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Platnost do</label>
+                                            <InputText @bind-Value="cardPayment.ExpiryDate" class="form-control" placeholder="MM/RR" />
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">CVV</label>
+                                            <InputText @bind-Value="cardPayment.CVV" class="form-control" placeholder="123" />
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Jméno držitele karty</label>
+                                        <InputText @bind-Value="cardPayment.CardHolderName" class="form-control" />
+                                    </div>
+                                    <button type="submit" class="btn btn-primary btn-lg w-100" disabled="@isProcessing">
+                                        @if (isProcessing)
+                                        {
+                                            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                            <span>Zpracovávám platbu...</span>
+                                        }
+                                        else
+                                        {
+                                            <i class="fas fa-lock me-2"></i>
+                                            <span>Zaplatit @camp.Price Kč</span>
+                                        }
+                                    </button>
+                                </EditForm>
+                            </div>
+                        }
+                        else if (selectedPaymentMethod == "bank")
+                        {
+                            <!-- Bank Transfer Info -->
+                            <div class="bank-transfer-info">
+                                <h5>Údaje pro bankovní převod</h5>
+                                <div class="alert alert-info">
+                                    <h6>Platební údaje:</h6>
+                                    <p><strong>Číslo účtu:</strong> 123456789/0100</p>
+                                    <p><strong>Variabilní symbol:</strong> @AccessCode</p>
+                                    <p><strong>Částka:</strong> @camp.Price Kč</p>
+                                    <p><strong>Zpráva pro příjemce:</strong> Letní tábor - @camp.Name</p>
+                                </div>
+                                <p>Po provedení platby bude vaše přihláška automaticky potvrzena. Potvrzení obdržíte e-mailem během 24 hodin.</p>
+                                <button class="btn btn-primary btn-lg w-100" @onclick="ConfirmBankTransfer">
+                                    <i class="fas fa-check me-2"></i>Potvrzuji bankovní převod
+                                </button>
+                            </div>
+                        }
+
+                        <!-- Security Info -->
+                        <div class="security-info mt-4">
+                            <div class="row text-center">
+                                <div class="col-md-4">
+                                    <i class="fas fa-shield-alt text-success fs-2"></i>
+                                    <p class="small mt-2">Zabezpečená platba</p>
+                                </div>
+                                <div class="col-md-4">
+                                    <i class="fas fa-lock text-success fs-2"></i>
+                                    <p class="small mt-2">SSL šifrování</p>
+                                </div>
+                                <div class="col-md-4">
+                                    <i class="fas fa-undo text-success fs-2"></i>
+                                    <p class="small mt-2">Možnost vrácení</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<style>
+    .payment-card {
+        box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        border: none;
+        border-radius: 15px;
+    }
+
+    .order-summary {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 10px;
+    }
+
+    .payment-option {
+        border: 2px solid #e9ecef;
+        border-radius: 10px;
+        padding: 20px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+
+    .payment-option:hover {
+        border-color: #2c5aa0;
+        background-color: #f8f9fa;
+    }
+
+    .payment-option.selected {
+        border-color: #2c5aa0;
+        background-color: rgba(44, 90, 160, 0.1);
+    }
+
+    .payment-option i {
+        font-size: 2rem;
+        color: #2c5aa0;
+        display: block;
+        margin-bottom: 10px;
+    }
+
+    .card-payment-form, .bank-transfer-info {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 10px;
+    }
+
+    .security-info {
+        border-top: 1px solid #e9ecef;
+        padding-top: 20px;
+    }
+</style>
+
+@code {
+    [Parameter] public string AccessCode { get; set; } = "";
+    
+    private Camp? camp;
+    private string selectedPaymentMethod = "card";
+    private bool isProcessing = false;
+    private CardPayment cardPayment = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // In a real app, you would look up the registration by access code
+        // For demo, we'll use the first camp
+        var camps = await CampService.GetAllCampsAsync();
+        camp = camps.FirstOrDefault();
+    }
+
+    private void SelectPaymentMethod(string method)
+    {
+        selectedPaymentMethod = method;
+    }
+
+    private async Task ProcessCardPayment()
+    {
+        isProcessing = true;
+        StateHasChanged();
+
+        // Simulate payment processing
+        await Task.Delay(3000);
+
+        // In a real app, you would integrate with a payment gateway like Stripe, PayU, etc.
+        await JSRuntime.InvokeVoidAsync("showAlert", "Platba byla úspěšně zpracována! Přihláška je potvrzena.");
+        
+        Navigation.NavigateTo($"/potvrzeni/{AccessCode}");
+    }
+
+    private async Task ConfirmBankTransfer()
+    {
+        await JSRuntime.InvokeVoidAsync("showAlert", "Pokyny pro bankovní převod byly zaznamenány. Po připsání platby na účet bude vaše přihláška potvrzena.");
+        Navigation.NavigateTo($"/potvrzeni/{AccessCode}");
+    }
+
+    public class CardPayment
+    {
+        public string CardNumber { get; set; } = "";
+        public string ExpiryDate { get; set; } = "";
+        public string CVV { get; set; } = "";
+        public string CardHolderName { get; set; } = "";
+    }
+}
