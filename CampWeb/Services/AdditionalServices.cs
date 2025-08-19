@@ -1,6 +1,76 @@
 ﻿using CampWeb.Models;
+using CampWeb.Data;
+using Microsoft.EntityFrameworkCore;
+using System.Net.Mail;
+using System.Net;
 
 namespace CampWeb.Services;
+
+public interface IEmailService
+{
+    Task SendEmailAsync(string to, string subject, string body);
+    Task SendRegistrationConfirmationAsync(string email, string childName, string campName, string accessCode);
+    Task SendCampUpdateNotificationAsync(string email, string childName, string campName, string updateTitle);
+}
+
+public class EmailService : IEmailService
+{
+    private readonly ILogger<EmailService> _logger;
+    private readonly IConfiguration _configuration;
+
+    public EmailService(ILogger<EmailService> logger, IConfiguration configuration)
+    {
+        _logger = logger;
+        _configuration = configuration;
+    }
+
+    public async Task SendEmailAsync(string to, string subject, string body)
+    {
+        try
+        {
+            // V development módu pouze logujeme
+            _logger.LogInformation("Email would be sent to: {To}", to);
+            _logger.LogInformation("Subject: {Subject}", subject);
+            _logger.LogInformation("Body: {Body}", body);
+            
+            // V produkci implementujte skutečné odesílání emailů
+            await Task.Delay(100); // Simulace
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send email to {To}", to);
+        }
+    }
+
+    public async Task SendRegistrationConfirmationAsync(string email, string childName, string campName, string accessCode)
+    {
+        var subject = $"Potvrzení registrace do tábora - {campName}";
+        var body = $@"
+            <h2>Potvrzení registrace</h2>
+            <p>Dobrý den,</p>
+            <p>Vaše dítě <strong>{childName}</strong> bylo úspěšně zaregistrováno do tábora <strong>{campName}</strong>.</p>
+            <p><strong>Přístupový kód:</strong> {accessCode}</p>
+            <p>Tento kód můžete použít pro přístup k fotkám a aktuálním informacím z tábora.</p>
+            <p>S pozdravem,<br>Tým Letních táborů Plzeň</p>
+        ";
+
+        await SendEmailAsync(email, subject, body);
+    }
+
+    public async Task SendCampUpdateNotificationAsync(string email, string childName, string campName, string updateTitle)
+    {
+        var subject = $"Nová aktualizace z tábora - {campName}";
+        var body = $@"
+            <h2>Nová aktualizace z tábora</h2>
+            <p>Dobrý den,</p>
+            <p>Pro váš tábor <strong>{campName}</strong> byla přidána nová aktualizace: <strong>{updateTitle}</strong></p>
+            <p>Podrobnosti najdete na našich stránkách.</p>
+            <p>S pozdravem,<br>Tým Letních táborů Plzeň</p>
+        ";
+
+        await SendEmailAsync(email, subject, body);
+    }
+}
 
 public interface IRegistrationService
 {
@@ -11,35 +81,71 @@ public interface IRegistrationService
 
 public class RegistrationService : IRegistrationService
 {
-    private readonly List<Registration> _registrations = new();
+    private readonly ApplicationDbContext _context;
+    private readonly ILogger<RegistrationService> _logger;
 
-    public Task<string> CreateRegistrationAsync(Registration registration)
+    public RegistrationService(ApplicationDbContext context, ILogger<RegistrationService> logger)
     {
-        registration.Id = _registrations.Count + 1;
-        registration.AccessCode = GenerateAccessCode();
-        registration.RegistrationDate = DateTime.Now;
-        registration.Status = RegistrationStatus.Pending;
-        
-        _registrations.Add(registration);
-        
-        return Task.FromResult(registration.AccessCode);
+        _context = context;
+        _logger = logger;
     }
 
-    public Task<Registration?> GetRegistrationByAccessCodeAsync(string accessCode)
+    public async Task<string> CreateRegistrationAsync(Registration registration)
     {
-        var registration = _registrations.FirstOrDefault(r => r.AccessCode == accessCode);
-        return Task.FromResult(registration);
-    }
-
-    public Task<bool> UpdateRegistrationStatusAsync(string accessCode, RegistrationStatus status)
-    {
-        var registration = _registrations.FirstOrDefault(r => r.AccessCode == accessCode);
-        if (registration != null)
+        try
         {
-            registration.Status = status;
-            return Task.FromResult(true);
+            registration.AccessCode = GenerateAccessCode();
+            registration.RegistrationDate = DateTime.UtcNow;
+            registration.Status = RegistrationStatus.Pending;
+
+            _context.Registrations.Add(registration);
+            await _context.SaveChangesAsync();
+
+            return registration.AccessCode;
         }
-        return Task.FromResult(false);
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating registration");
+            throw;
+        }
+    }
+
+    public async Task<Registration?> GetRegistrationByAccessCodeAsync(string accessCode)
+    {
+        try
+        {
+            return await _context.Registrations
+                .Include(r => r.Camp)
+                .FirstOrDefaultAsync(r => r.AccessCode == accessCode);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting registration by access code");
+            return null;
+        }
+    }
+
+    public async Task<bool> UpdateRegistrationStatusAsync(string accessCode, RegistrationStatus status)
+    {
+        try
+        {
+            var registration = await _context.Registrations
+                .FirstOrDefaultAsync(r => r.AccessCode == accessCode);
+
+            if (registration != null)
+            {
+                registration.Status = status;
+                await _context.SaveChangesAsync();
+                return true;
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating registration status");
+            return false;
+        }
     }
 
     private static string GenerateAccessCode()
@@ -57,64 +163,58 @@ public interface IPhotoService
 
 public class PhotoService : IPhotoService
 {
-    public Task<List<CampPhoto>> GetCampPhotosAsync(int campId)
-    {
-        // Sample photos - in real app, this would come from database/storage
-        var photos = new List<CampPhoto>
-        {
-            new() 
-            { 
-                Id = 1,
-                CampId = campId,
-                FileName = "https://images.unsplash.com/photo-1504851149312-7a075b496cc7?w=800", 
-                Description = "Ráno v táboře", 
-                UploadDate = DateTime.Now.AddDays(-2),
-                IsPublic = true
-            },
-            new() 
-            { 
-                Id = 2,
-                CampId = campId,
-                FileName = "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=800", 
-                Description = "Turistika v lese", 
-                UploadDate = DateTime.Now.AddDays(-2),
-                IsPublic = true
-            }
-        };
+    private readonly ApplicationDbContext _context;
+    private readonly ILogger<PhotoService> _logger;
 
-        return Task.FromResult(photos);
+    public PhotoService(ApplicationDbContext context, ILogger<PhotoService> logger)
+    {
+        _context = context;
+        _logger = logger;
     }
 
-    public Task<List<LiveUpdate>> GetLiveUpdatesAsync(int campId)
+    public async Task<List<CampPhoto>> GetCampPhotosAsync(int campId)
     {
-        var updates = new List<LiveUpdate>
+        try
         {
-            new() 
-            { 
-                Id = 1,
-                CampId = campId,
-                Title = "Výlet na Šumavu", 
-                Content = "Dnes jsme vyrazili na krásný výlet do přírody. Počasí nám přálo!",
-                CreatedAt = DateTime.Now.AddHours(-3),
-                PhotoUrl = "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=400"
-            },
-            new() 
-            { 
-                Id = 2,
-                CampId = campId,
-                Title = "Táborák", 
-                Content = "Večer jsme si rozdělali táborák a zpívali jsme písničky.",
-                CreatedAt = DateTime.Now.AddHours(-5),
-                PhotoUrl = "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400"
-            }
-        };
-
-        return Task.FromResult(updates);
+            return await _context.CampPhotos
+                .Where(p => p.CampId == campId && p.IsPublic)
+                .OrderByDescending(p => p.UploadDate)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting camp photos for camp {CampId}", campId);
+            return new List<CampPhoto>();
+        }
     }
 
-    public Task<bool> ValidateAccessCodeAsync(string accessCode)
+    public async Task<List<LiveUpdate>> GetLiveUpdatesAsync(int campId)
     {
-        // Simple validation - in real app, check against database
-        return Task.FromResult(!string.IsNullOrEmpty(accessCode) && accessCode.Length == 8);
+        try
+        {
+            return await _context.LiveUpdates
+                .Where(u => u.CampId == campId)
+                .OrderByDescending(u => u.CreatedAt)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting live updates for camp {CampId}", campId);
+            return new List<LiveUpdate>();
+        }
+    }
+
+    public async Task<bool> ValidateAccessCodeAsync(string accessCode)
+    {
+        try
+        {
+            return await _context.Registrations
+                .AnyAsync(r => r.AccessCode == accessCode);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error validating access code");
+            return false;
+        }
     }
 }

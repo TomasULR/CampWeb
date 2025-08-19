@@ -1,6 +1,5 @@
 ﻿@page "/"
 @page "/home"
-@using CampWeb.Services
 @inject ICampService CampService
 
 <PageTitle>Domů - Letní Tábory Plzeň</PageTitle>
@@ -144,7 +143,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        popularCamps = await CampService.GetPopularCampsAsync();
+        popularCamps = await CampService.GetAvailableCampsAsync();
     }
 
     private static string GetCampIcon(string type)

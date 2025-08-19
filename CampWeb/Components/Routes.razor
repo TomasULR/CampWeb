@@ -1,14 +1,14 @@
 ﻿<Router AppAssembly="typeof(Program).Assembly">
     <Found Context="routeData">
-        <RouteView RouteData="@routeData" DefaultLayout="typeof(Components.Layout.MainLayout)" />
-        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+        <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
     </Found>
     <NotFound>
         <PageTitle>Stránka nenalezena</PageTitle>
-        <LayoutView Layout="typeof(Components.Layout.MainLayout)">
-            <div class="container my-5 text-center">
+        <LayoutView Layout="typeof(Layout.MainLayout)">
+            <div class="container text-center mt-5">
                 <h1>404 - Stránka nenalezena</h1>
-                <p>Požadovaná stránka neexistuje.</p>
+                <p>Omlouváme se, ale požadovaná stránka neexistuje.</p>
                 <a href="/" class="btn btn-primary">Zpět na hlavní stránku</a>
             </div>
         </LayoutView>

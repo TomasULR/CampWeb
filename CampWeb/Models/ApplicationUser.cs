@@ -5,19 +5,21 @@ namespace CampWeb.Models;
 
 public class ApplicationUser : IdentityUser
 {
+    [Required]
     [MaxLength(100)]
     public string FirstName { get; set; } = "";
     
+    [Required]
     [MaxLength(100)]
     public string LastName { get; set; } = "";
     
-    public DateTime CreatedAt { get; set; } = DateTime.Now;
-    
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? LastLoginAt { get; set; }
-    
-    // Navigation properties for registrations
+
+    // Navigation properties
     public virtual ICollection<Registration> Registrations { get; set; } = new List<Registration>();
-    
+
+    // Computed property
     public string FullName => $"{FirstName} {LastName}".Trim();
 }
 

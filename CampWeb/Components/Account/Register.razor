@@ -1,267 +1,198 @@
 ﻿@page "/registrace"
 @page "/Account/Register"
+@using System.ComponentModel.DataAnnotations
 @using Microsoft.AspNetCore.Identity
+@using CampWeb.Models
 @inject UserManager<ApplicationUser> UserManager
 @inject SignInManager<ApplicationUser> SignInManager
 @inject NavigationManager Navigation
-@inject IJSRuntime JSRuntime
+@inject ILogger<Register> Logger
 @rendermode InteractiveServer
 
 <PageTitle>Registrace - Letní Tábory Plzeň</PageTitle>
 
-<div class="container my-5">
-    <div class="row justify-content-center">
-        <div class="col-lg-6">
-            <div class="card registration-card">
-                <div class="card-header text-center bg-primary text-white">
-                    <h3 class="mb-0"><i class="fas fa-user-plus me-2"></i>Vytvoření rodičovského účtu</h3>
-                </div>
-                <div class="card-body">
-                    <p class="text-muted mb-4">Vytvořte si účet pro snadnou správu registrací a přístup k informacím o táborech.</p>
-                    
-                    <EditForm Model="registerModel" OnValidSubmit="HandleRegistration">
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h2>Vytvořte si účet</h2>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-4">
+                    Vytvořte si účet pro snadnou správu registrací a přístup k informacím o táborech.
+                </p>
+
+                @if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    <div class="alert alert-danger">
+                        @errorMessage
+                    </div>
+                }
+
+                @if (registrationSuccess)
+                {
+                    <div class="alert alert-success">
+                        <strong>Registrace úspěšná!</strong> Přesměrováváme vás na hlavní stránku...
+                    </div>
+                }
+                else
+                {
+                    <EditForm Model="Input" OnValidSubmit="RegisterUser" FormName="register">
                         <DataAnnotationsValidator />
-                        
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Jméno *</label>
-                                <InputText @bind-Value="registerModel.FirstName" class="form-control" />
-                                <ValidationMessage For="@(() => registerModel.FirstName)" class="text-danger" />
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Příjmení *</label>
-                                <InputText @bind-Value="registerModel.LastName" class="form-control" />
-                                <ValidationMessage For="@(() => registerModel.LastName)" class="text-danger" />
-                            </div>
+
+                        <div class="form-group mb-3">
+                            <label for="firstname" class="form-label">Křestní jméno</label>
+                            <InputText @bind-Value="Input.FirstName" class="form-control" id="firstname" autocomplete="given-name" />
+                            <ValidationMessage For="() => Input.FirstName" class="text-danger" />
                         </div>
 
-                        <div class="mb-3">
-                            <label class="form-label">E-mail *</label>
-                            <InputText @bind-Value="registerModel.Email" class="form-control" type="email" />
-                            <ValidationMessage For="@(() => registerModel.Email)" class="text-danger" />
+                        <div class="form-group mb-3">
+                            <label for="lastname" class="form-label">Příjmení</label>
+                            <InputText @bind-Value="Input.LastName" class="form-control" id="lastname" autocomplete="family-name" />
+                            <ValidationMessage For="() => Input.LastName" class="text-danger" />
                         </div>
 
-                        <div class="mb-3">
-                            <label class="form-label">Telefon *</label>
-                            <InputText @bind-Value="registerModel.PhoneNumber" class="form-control" />
-                            <ValidationMessage For="@(() => registerModel.PhoneNumber)" class="text-danger" />
-                            <div class="form-text">Formát: +420123456789</div>
+                        <div class="form-group mb-3">
+                            <label for="email" class="form-label">E-mail</label>
+                            <InputText @bind-Value="Input.Email" class="form-control" id="email" type="email" autocomplete="email" />
+                            <ValidationMessage For="() => Input.Email" class="text-danger" />
                         </div>
 
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Heslo *</label>
-                                <InputText @bind-Value="registerModel.Password" class="form-control" type="password" />
-                                <ValidationMessage For="@(() => registerModel.Password)" class="text-danger" />
-                                <div class="form-text">Minimálně 6 znaků, obsahuje číslo</div>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Potvrzení hesla *</label>
-                                <InputText @bind-Value="registerModel.ConfirmPassword" class="form-control" type="password" />
-                                <ValidationMessage For="@(() => registerModel.ConfirmPassword)" class="text-danger" />
-                            </div>
+                        <div class="form-group mb-3">
+                            <label for="phone" class="form-label">Telefon</label>
+                            <InputText @bind-Value="Input.PhoneNumber" class="form-control" id="phone" type="tel" autocomplete="tel" />
+                            <ValidationMessage For="() => Input.PhoneNumber" class="text-danger" />
                         </div>
 
-                        <div class="mb-3 form-check">
-                            <input type="checkbox" class="form-check-input" id="agreeTerms" @bind="agreeToTerms" />
-                            <label class="form-check-label" for="agreeTerms">
-                                Souhlasím s <a href="/podminky" target="_blank">obchodními podmínkami</a> a 
-                                <a href="/ochrana-osobnich-udaju" target="_blank">zpracováním osobních údajů</a> *
-                            </label>
+                        <div class="form-group mb-3">
+                            <label for="password" class="form-label">Heslo</label>
+                            <InputText @bind-Value="Input.Password" class="form-control" id="password" type="password" autocomplete="new-password" />
+                            <ValidationMessage For="() => Input.Password" class="text-danger" />
                         </div>
 
-                        @if (!string.IsNullOrEmpty(errorMessage))
-                        {
-                            <div class="alert alert-danger">
-                                @errorMessage
-                            </div>
-                        }
+                        <div class="form-group mb-3">
+                            <label for="confirmpassword" class="form-label">Potvrzení hesla</label>
+                            <InputText @bind-Value="Input.ConfirmPassword" class="form-control" id="confirmpassword" type="password" autocomplete="new-password" />
+                            <ValidationMessage For="() => Input.ConfirmPassword" class="text-danger" />
+                        </div>
 
-                        @if (!string.IsNullOrEmpty(successMessage))
-                        {
-                            <div class="alert alert-success">
-                                @successMessage
-                            </div>
-                        }
-
-                        <button type="submit" class="btn btn-primary btn-lg w-100" disabled="@(isRegistering || !agreeToTerms)">
-                            @if (isRegistering)
+                        <button type="submit" class="btn btn-primary w-100" disabled="@isLoading">
+                            @if (isLoading)
                             {
-                                <span class="spinner-border spinner-border-sm me-2"></span>
-                                <span>Vytváření účtu...</span>
+                                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
                             }
-                            else
-                            {
-                                <i class="fas fa-user-plus me-2"></i>
-                                <span>Vytvořit účet</span>
-                            }
+                            Vytvořit účet
                         </button>
                     </EditForm>
+                }
 
-                    <div class="text-center mt-4">
-                        <p class="mb-0">Už máte účet? <a href="/prihlaseni" class="text-decoration-none">Přihlaste se zde</a></p>
-                    </div>
-                </div>
+                <hr class="my-4" />
+                <p class="text-center">
+                    Už máte účet? <a href="/prihlaseni">Přihlaste se zde</a>
+                </p>
             </div>
+        </div>
 
-            <!-- Benefits -->
-            <div class="card mt-4">
-                <div class="card-header">
-                    <h5 class="mb-0"><i class="fas fa-star me-2"></i>Výhody registrace</h5>
-                </div>
+        <div class="mt-4">
+            <div class="card">
                 <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <div class="d-flex">
-                                <i class="fas fa-check-circle text-success me-3 mt-1"></i>
-                                <div>
-                                    <h6>Rychlejší registrace</h6>
-                                    <p class="small text-muted mb-0">Při příští registraci na tábor nemusíte vyplňovat základní údaje</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <div class="d-flex">
-                                <i class="fas fa-bell text-primary me-3 mt-1"></i>
-                                <div>
-                                    <h6>Upozornění</h6>
-                                    <p class="small text-muted mb-0">Dostanete e-mail o nových táborech a aktuálních nabídkách</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <div class="d-flex">
-                                <i class="fas fa-history text-info me-3 mt-1"></i>
-                                <div>
-                                    <h6>Historie registrací</h6>
-                                    <p class="small text-muted mb-0">Přehled všech vašich registrací na jednom místě</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <div class="d-flex">
-                                <i class="fas fa-images text-warning me-3 mt-1"></i>
-                                <div>
-                                    <h6>Přístup k fotkám</h6>
-                                    <p class="small text-muted mb-0">Snadný přístup k fotkám ze všech táborů vašich dětí</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    <h5>Výhody registrace:</h5>
+                    <ul class="list-unstyled">
+                        <li>✓ Při příští registraci na tábor nemusíte vyplňovat základní údaje</li>
+                        <li>✓ Dostanete e-mail o nových táborech a aktuálních nabídkách</li>
+                        <li>✓ Přehled všech vašich registrací na jednom místě</li>
+                        <li>✓ Snadný přístup k fotkám ze všech táborů vašich dětí</li>
+                    </ul>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<style>
-    .registration-card {
-        box-shadow: 0 8px 25px rgba(0,0,0,0.1);
-        border: none;
-        border-radius: 15px;
-    }
-
-    .form-control:focus {
-        border-color: #2c5aa0;
-        box-shadow: 0 0 0 0.2rem rgba(44, 90, 160, 0.25);
-    }
-
-    .btn:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-    }
-
-    .form-check-input:checked {
-        background-color: #2c5aa0;
-        border-color: #2c5aa0;
-    }
-
-    .spinner-border-sm {
-        width: 1rem;
-        height: 1rem;
-    }
-</style>
-
 @code {
-    private RegisterViewModel registerModel = new();
-    private bool agreeToTerms = false;
-    private bool isRegistering = false;
-    private string errorMessage = "";
-    private string successMessage = "";
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = new();
 
-    private async Task HandleRegistration()
+    private bool isLoading = false;
+    private bool registrationSuccess = false;
+    private string? errorMessage;
+
+    private async Task RegisterUser()
     {
-        if (!agreeToTerms)
-        {
-            errorMessage = "Musíte souhlasit s obchodními podmínkami a zpracováním osobních údajů.";
-            return;
-        }
-
-        isRegistering = true;
-        errorMessage = "";
-        successMessage = "";
+        isLoading = true;
+        errorMessage = null;
         StateHasChanged();
 
         try
         {
             var user = new ApplicationUser
             {
-                UserName = registerModel.Email,
-                Email = registerModel.Email,
-                FirstName = registerModel.FirstName,
-                LastName = registerModel.LastName,
-                PhoneNumber = registerModel.PhoneNumber,
-                EmailConfirmed = true, // For demo purposes
-                PhoneNumberConfirmed = true
+                UserName = Input.Email,
+                Email = Input.Email,
+                FirstName = Input.FirstName,
+                LastName = Input.LastName,
+                PhoneNumber = Input.PhoneNumber,
+                EmailConfirmed = true, // V produkci implementujte email confirmation
+                CreatedAt = DateTime.UtcNow
             };
 
-            var result = await UserManager.CreateAsync(user, registerModel.Password);
+            var result = await UserManager.CreateAsync(user, Input.Password);
 
             if (result.Succeeded)
             {
                 // Add to Parent role
                 await UserManager.AddToRoleAsync(user, "Parent");
-
+                
                 // Sign in the user
                 await SignInManager.SignInAsync(user, isPersistent: false);
-
-                successMessage = "Účet byl úspěšně vytvořen! Přesměrování...";
-                StateHasChanged();
-
-                await Task.Delay(2000);
-                await JSRuntime.InvokeVoidAsync("showAlert", "Vítejte! Váš účet byl úspěšně vytvořen.");
                 
+                // Show success message
+                registrationSuccess = true;
+                StateHasChanged();
+                
+                // Wait a moment to show success message, then redirect
+                await Task.Delay(1500);
                 Navigation.NavigateTo("/", forceLoad: true);
+                return;
             }
             else
             {
-                errorMessage = string.Join(" ", result.Errors.Select(e => GetCzechErrorMessage(e.Code, e.Description)));
+                errorMessage = string.Join(", ", result.Errors.Select(e => e.Description));
             }
         }
         catch (Exception ex)
         {
-            errorMessage = "Došlo k chybě při vytváření účtu. Zkuste to prosím znovu.";
+            Logger.LogError(ex, "Error during registration");
+            errorMessage = "Došlo k chybě při registraci. Zkuste to znovu.";
         }
         finally
         {
-            isRegistering = false;
+            isLoading = false;
             StateHasChanged();
         }
     }
 
-    private static string GetCzechErrorMessage(string code, string description)
+    public sealed class InputModel
     {
-        return code switch
-        {
-            "DuplicateUserName" => "Uživatel s tímto e-mailem už existuje.",
-            "DuplicateEmail" => "Uživatel s tímto e-mailem už existuje.",
-            "InvalidEmail" => "Neplatný formát e-mailu.",
-            "PasswordTooShort" => "Heslo musí mít alespoň 6 znaků.",
-            "PasswordRequiresDigit" => "Heslo musí obsahovat alespoň jednu číslici.",
-            "PasswordRequiresLower" => "Heslo musí obsahovat alespoň jedno malé písmeno.",
-            "PasswordRequiresUpper" => "Heslo musí obsahovat alespoň jedno velké písmeno.",
-            "PasswordRequiresNonAlphanumeric" => "Heslo musí obsahovat alespoň jeden speciální znak.",
-            _ => description
-        };
+        [Required(ErrorMessage = "Křestní jméno je povinné")]
+        public string FirstName { get; set; } = "";
+
+        [Required(ErrorMessage = "Příjmení je povinné")]
+        public string LastName { get; set; } = "";
+
+        [Required(ErrorMessage = "E-mail je povinný")]
+        [EmailAddress(ErrorMessage = "Neplatný formát e-mailu")]
+        public string Email { get; set; } = "";
+
+        [Phone(ErrorMessage = "Neplatný formát telefonu")]
+        public string? PhoneNumber { get; set; }
+
+        [Required(ErrorMessage = "Heslo je povinné")]
+        [StringLength(100, MinimumLength = 6, ErrorMessage = "Heslo musí mít alespoň 6 znaků")]
+        public string Password { get; set; } = "";
+
+        [Required(ErrorMessage = "Potvrzení hesla je povinné")]
+        [Compare("Password", ErrorMessage = "Hesla se neshodují")]
+        public string ConfirmPassword { get; set; } = "";
     }
 }

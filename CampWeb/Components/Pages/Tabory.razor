@@ -2,107 +2,190 @@
 @using CampWeb.Models
 @using CampWeb.Services
 @inject ICampService CampService
+@inject NavigationManager Navigation
+@inject ILogger<Tabory> Logger
+@rendermode InteractiveServer
 
-<PageTitle>Všechny tábory - Letní Tábory Plzeň</PageTitle>
+<PageTitle>Naše tábory - Letní Tábory Plzeň</PageTitle>
 
-<div class="container my-5">
-    <div class="row">
+<div class="container mt-4">
+    <!-- Header -->
+    <div class="row mb-4">
         <div class="col-12">
-            <h1 class="mb-4">Všechny tábory</h1>
-            <p class="lead text-muted mb-5">Vyberte si z naší nabídky kvalitních letních táborů pro děti všech věkových kategorií</p>
+            <div class="text-center">
+                <h1 class="display-5 fw-bold text-primary">Naše tábory</h1>
+                <p class="lead text-muted">Vyberte si z naší nabídky kvalitních letních táborů pro děti všech věkových kategorií</p>
+            </div>
         </div>
     </div>
 
     <!-- Filters -->
     <div class="row mb-4">
-        <div class="col-md-3 mb-3">
-            <label class="form-label">Typ tábora</label>
-            <select class="form-select" @onchange="FilterByType">
-                <option value="">Všechny typy</option>
-                <option value="adventure">Dobrodružné</option>
-                <option value="sport">Sportovní</option>
-                <option value="creative">Kreativní</option>
-                <option value="science">Vědecké</option>
-                <option value="water">Vodácké</option>
-            </select>
-        </div>
-        <div class="col-md-3 mb-3">
-            <label class="form-label">Věková kategorie</label>
-            <select class="form-select" @onchange="FilterByAge">
-                <option value="">Všechny věky</option>
-                <option value="6-9">6-9 let</option>
-                <option value="10-13">10-13 let</option>
-                <option value="14-17">14-17 let</option>
-            </select>
-        </div>
-        <div class="col-md-3 mb-3">
-            <label class="form-label">Řadit podle</label>
-            <select class="form-select" @onchange="SortCamps">
-                <option value="name">Názvu</option>
-                <option value="price-asc">Ceny (nejlevnější)</option>
-                <option value="price-desc">Ceny (nejdražší)</option>
-                <option value="availability">Dostupnosti</option>
-            </select>
-        </div>
-        <div class="col-md-3 mb-3">
-            <label class="form-label">&nbsp;</label>
-            <div>
-                <button class="btn btn-outline-primary w-100" @onclick="ResetFilters">
-                    <i class="fas fa-undo me-2"></i>Zrušit filtry
-                </button>
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Typ tábora</label>
+                            <select class="form-select" @bind="selectedType" @bind:after="ApplyFiltersAsync">
+                                <option value="">Všechny typy</option>
+                                <option value="adventure">Dobrodružný</option>
+                                <option value="sport">Sportovní</option>
+                                <option value="creative">Kreativní</option>
+                                <option value="water">Vodácký</option>
+                                <option value="science">Vědecký</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Věková kategorie</label>
+                            <select class="form-select" @bind="selectedAgeGroup" @bind:after="ApplyFiltersAsync">
+                                <option value="">Všechny věky</option>
+                                <option value="6-9">6-9 let</option>
+                                <option value="10-13">10-13 let</option>
+                                <option value="14-17">14-17 let</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Maximální cena</label>
+                            <select class="form-select" @bind="maxPrice" @bind:after="ApplyFiltersAsync">
+                                <option value="">Bez omezení</option>
+                                <option value="4000">Do 4 000 Kč</option>
+                                <option value="5000">Do 5 000 Kč</option>
+                                <option value="6000">Do 6 000 Kč</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Dostupnost</label>
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="checkbox" @bind="onlyAvailable" @bind:after="ApplyFiltersAsync" id="availableOnly">
+                                <label class="form-check-label" for="availableOnly">
+                                    Pouze s volnými místy
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Results count -->
-    <div class="row mb-4">
+    <!-- Results Summary -->
+    <div class="row mb-3">
         <div class="col-12">
-            <p class="text-muted">Zobrazeno <strong>@filteredCamps.Count</strong> táborů z celkem <strong>@allCamps.Count</strong></p>
+            @if (isLoading)
+            {
+                <div class="text-center">
+                    <div class="spinner-border text-primary me-2" role="status">
+                        <span class="visually-hidden">Načítání...</span>
+                    </div>
+                    <span>Načítání táborů...</span>
+                </div>
+            }
+            else
+            {
+                <p class="text-muted">
+                    Zobrazeno <strong>@filteredCamps.Count</strong> táborů z celkem <strong>@allCamps.Count</strong>
+                </p>
+            }
         </div>
     </div>
 
     <!-- Camps Grid -->
     <div class="row">
-        @if (filteredCamps.Any())
+        @if (isLoading)
+        {
+            <!-- Loading skeleton -->
+            @for (int i = 0; i < 3; i++)
+            {
+                <div class="col-lg-4 col-md-6 mb-4">
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-body">
+                            <div class="placeholder-glow">
+                                <span class="placeholder col-8"></span>
+                                <span class="placeholder col-6"></span>
+                                <span class="placeholder col-12"></span>
+                                <span class="placeholder col-4"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+        else if (hasError)
+        {
+            <div class="col-12">
+                <div class="alert alert-danger">
+                    <h5><i class="fas fa-exclamation-triangle me-2"></i>Chyba při načítání</h5>
+                    <p>Nepodařilo se načíst seznam táborů. Zkuste to prosím znovu.</p>
+                    <button class="btn btn-outline-danger" @onclick="LoadCampsDataAsync">
+                        <i class="fas fa-redo me-2"></i>Zkusit znovu
+                    </button>
+                </div>
+            </div>
+        }
+        else if (!filteredCamps.Any())
+        {
+            <div class="col-12">
+                <div class="text-center py-5">
+                    <div class="mb-4">
+                        <i class="fas fa-search fa-3x text-muted"></i>
+                    </div>
+                    <h4 class="text-muted">Nenalezeny žádné tábory</h4>
+                    <p class="text-muted">Zkuste změnit filtry nebo se vraťte později</p>
+                    <button class="btn btn-primary" @onclick="ClearFiltersAsync">
+                        <i class="fas fa-times me-2"></i>Vymazat filtry
+                    </button>
+                </div>
+            </div>
+        }
+        else
         {
             @foreach (var camp in filteredCamps)
             {
                 <div class="col-lg-4 col-md-6 mb-4">
-                    <div class="card camp-card h-100">
-                        <div class="camp-image position-relative">
-                            @if (camp.Images.Any())
-                            {
-                                <img src="@camp.Images.First()" alt="@camp.Name" class="card-img-top" />
-                            }
-                            else
-                            {
-                                <div class="placeholder-image">
-                                    <i class="@GetCampIcon(camp.Type)"></i>
-                                </div>
-                            }
-                            <div class="position-absolute top-0 end-0 m-2">
-                                <span class="badge @GetAvailabilityBadge(camp.AvailableSpots)">
-                                    @GetAvailabilityText(camp.AvailableSpots)
-                                </span>
-                            </div>
-                            <div class="position-absolute top-0 start-0 m-2">
-                                <span class="badge bg-dark">@GetCampTypeText(camp.Type)</span>
+                    <div class="card h-100 shadow-sm border-0 camp-card" @onclick="() => NavigateToCamp(camp.Id)">
+                        <div class="card-header bg-white border-bottom-0 pt-3">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <span class="badge bg-primary">@GetCampTypeDisplay(camp.Type)</span>
+                                @if (camp.AvailableSpots <= 3 && camp.AvailableSpots > 0)
+                                {
+                                    <span class="badge bg-warning text-dark">
+                                        <i class="fas fa-exclamation-triangle me-1"></i>Málo míst
+                                    </span>
+                                }
+                                else if (camp.AvailableSpots == 0)
+                                {
+                                    <span class="badge bg-danger">Obsazeno</span>
+                                }
                             </div>
                         </div>
-                        <div class="card-body d-flex flex-column">
-                            <h5 class="card-title">@camp.Name</h5>
-                            <p class="text-muted mb-2">
-                                <i class="fas fa-map-marker-alt me-1"></i>@camp.Location
-                            </p>
-                            <p class="text-muted mb-2">
-                                <i class="fas fa-users me-1"></i>@camp.AgeGroup let
-                            </p>
-                            <p class="text-muted mb-3">
-                                <i class="fas fa-calendar-alt me-1"></i>@camp.StartDate.ToString("dd.MM") - @camp.EndDate.ToString("dd.MM.yyyy")
-                            </p>
-                            <p class="card-text flex-grow-1">@camp.ShortDescription</p>
+                        <div class="card-body">
+                            <h5 class="card-title text-dark">@camp.Name</h5>
+                            <div class="camp-details mb-3">
+                                <p class="text-muted small mb-2">
+                                    <i class="fas fa-map-marker-alt text-danger me-2"></i>@camp.Location
+                                </p>
+                                <p class="text-muted small mb-2">
+                                    <i class="fas fa-users text-info me-2"></i>@camp.AgeGroup let
+                                </p>
+                                <p class="text-muted small mb-2">
+                                    <i class="fas fa-calendar text-success me-2"></i>@camp.StartDate.ToString("dd.MM") - @camp.EndDate.ToString("dd.MM.yyyy")
+                                </p>
+                                <p class="text-muted small">
+                                    <i class="fas fa-chair text-warning me-2"></i>
+                                    @if (camp.AvailableSpots > 0)
+                                    {
+                                        <span class="text-success">@camp.AvailableSpots volných míst</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-danger">Obsazeno</span>
+                                    }
+                                </p>
+                            </div>
+                            <p class="card-text text-muted">@camp.ShortDescription</p>
                             
-                            @if (camp.Activities.Any())
+                            @if (camp.Activities?.Any() == true)
                             {
                                 <div class="activities mb-3">
                                     @foreach (var activity in camp.Activities.Take(3))
@@ -111,224 +194,160 @@
                                     }
                                     @if (camp.Activities.Count > 3)
                                     {
-                                        <span class="badge bg-light text-dark">+@(camp.Activities.Count - 3) dalších</span>
+                                        <span class="badge bg-light text-muted">+@(camp.Activities.Count - 3) dalších</span>
                                     }
                                 </div>
                             }
-
-                            <div class="d-flex justify-content-between align-items-center mt-auto">
-                                <div>
-                                    <h4 class="text-primary mb-0">@camp.Price Kč</h4>
-                                    <small class="text-muted">za týden</small>
-                                </div>
-                                <div>
-                                    <a href="/tabor/@camp.Id" class="btn btn-primary">
-                                        Více info
-                                    </a>
-                                </div>
+                        </div>
+                        <div class="card-footer bg-white border-top-0">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="h5 mb-0 text-success">@camp.Price.ToString("N0") Kč</span>
+                                @if (camp.AvailableSpots > 0)
+                                {
+                                    <button class="btn btn-primary" @onclick:stopPropagation="true" @onclick="() => NavigateToRegistration(camp.Id)">
+                                        <i class="fas fa-user-plus me-2"></i>Registrovat
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-secondary" disabled>
+                                        <i class="fas fa-times me-2"></i>Obsazeno
+                                    </button>
+                                }
                             </div>
                         </div>
                     </div>
                 </div>
             }
         }
-        else
-        {
-            <div class="col-12 text-center py-5">
-                <i class="fas fa-search text-muted" style="font-size: 4rem;"></i>
-                <h4 class="text-muted mt-3">Žádné tábory nenalezeny</h4>
-                <p class="text-muted">Zkuste změnit filtry nebo se vraťte později</p>
-                <button class="btn btn-primary" @onclick="ResetFilters">
-                    <i class="fas fa-undo me-2"></i>Zobrazit všechny tábory
-                </button>
-            </div>
-        }
     </div>
-
-    <!-- Call to Action -->
-    @if (filteredCamps.Any())
-    {
-        <div class="row mt-5">
-            <div class="col-12">
-                <div class="cta-section">
-                    <div class="row align-items-center">
-                        <div class="col-md-8">
-                            <h3>Nenašli jste vhodný tábor?</h3>
-                            <p class="mb-0">Kontaktujte nás a pomůžeme vám najít ideální tábor pro vaše dítě</p>
-                        </div>
-                        <div class="col-md-4 text-end">
-                            <a href="tel:+420123456789" class="btn btn-success">
-                                <i class="fas fa-phone me-2"></i>Zavolat
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    }
 </div>
 
 <style>
-    .camp-image {
-        height: 200px;
-        overflow: hidden;
+    .camp-card {
+        transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        cursor: pointer;
     }
-
-    .camp-image img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        transition: transform 0.3s ease;
+    .camp-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15) !important;
     }
-
-    .camp-card:hover .camp-image img {
-        transform: scale(1.05);
-    }
-
-    .placeholder-image {
-        height: 100%;
-        background: linear-gradient(45deg, #e3f2fd, #bbdefb);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 3rem;
-        color: var(--primary-color);
-    }
-
     .activities .badge {
-        font-size: 0.75rem;
-    }
-
-    .cta-section {
-        background: linear-gradient(135deg, var(--primary-color), #1e3d72);
-        color: white;
-        padding: 30px;
-        border-radius: 15px;
-    }
-
-    .cta-section h3 {
-        margin-bottom: 10px;
-    }
-
-    @@media (max-width: 768px) {
-        .cta-section {
-            text-align: center;
-        }
-        
-        .cta-section .col-md-4 {
-            margin-top: 20px;
-        }
+        font-size: 0.75em;
     }
 </style>
 
 @code {
     private List<Camp> allCamps = new();
     private List<Camp> filteredCamps = new();
+    private bool isLoading = true;
+    private bool hasError = false;
+
+    // Filter parameters
     private string selectedType = "";
-    private string selectedAge = "";
-    private string sortBy = "name";
+    private string selectedAgeGroup = "";
+    private string maxPrice = "";
+    private bool onlyAvailable = false;
 
     protected override async Task OnInitializedAsync()
     {
-        allCamps = await CampService.GetAllCampsAsync();
-        filteredCamps = allCamps.ToList();
-        SortCampsList();
+        await LoadCampsDataAsync();
     }
 
-    private async Task FilterByType(ChangeEventArgs e)
+    private async Task LoadCampsDataAsync()
     {
-        selectedType = e.Value?.ToString() ?? "";
-        await ApplyFilters();
+        isLoading = true;
+        hasError = false;
+
+        try
+        {
+            Logger.LogInformation("Loading camps from database...");
+            
+            // Load all camps from the database via service
+            allCamps = await CampService.GetAllCampsAsync();
+            filteredCamps = allCamps.ToList();
+            
+            Logger.LogInformation("Loaded {Count} camps from database", allCamps.Count);
+            
+            // Apply any existing filters
+            await ApplyFiltersAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading camps from database");
+            hasError = true;
+            allCamps = new List<Camp>();
+            filteredCamps = new List<Camp>();
+        }
+        finally
+        {
+            isLoading = false;
+        }
     }
 
-    private async Task FilterByAge(ChangeEventArgs e)
+    private async Task ApplyFiltersAsync()
     {
-        selectedAge = e.Value?.ToString() ?? "";
-        await ApplyFilters();
+        try
+        {
+            // Convert maxPrice string to nullable int
+            int? maxPriceValue = string.IsNullOrEmpty(maxPrice) ? null : int.Parse(maxPrice);
+
+            // Use the service's filtering method
+            var filtered = await CampService.FilterCampsAsync(
+                type: string.IsNullOrEmpty(selectedType) ? null : selectedType,
+                ageGroup: string.IsNullOrEmpty(selectedAgeGroup) ? null : selectedAgeGroup,
+                maxPrice: maxPriceValue
+            );
+
+            // Apply additional client-side filtering for availability
+            if (onlyAvailable)
+            {
+                filtered = filtered.Where(c => c.AvailableSpots > 0).ToList();
+            }
+
+            filteredCamps = filtered.ToList();
+            
+            Logger.LogInformation("Applied filters, showing {Count} camps", filteredCamps.Count);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error applying filters");
+            filteredCamps = allCamps.ToList();
+        }
     }
 
-    private async Task SortCamps(ChangeEventArgs e)
-    {
-        sortBy = e.Value?.ToString() ?? "name";
-        SortCampsList();
-    }
-
-    private async Task ResetFilters()
+    private async Task ClearFiltersAsync()
     {
         selectedType = "";
-        selectedAge = "";
-        sortBy = "name";
+        selectedAgeGroup = "";
+        maxPrice = "";
+        onlyAvailable = false;
         filteredCamps = allCamps.ToList();
-        SortCampsList();
-        StateHasChanged();
-    }
-
-    private async Task ApplyFilters()
-    {
-        filteredCamps = await CampService.FilterCampsAsync(
-            string.IsNullOrEmpty(selectedType) ? null : selectedType,
-            string.IsNullOrEmpty(selectedAge) ? null : selectedAge,
-            null
-        );
         
-        SortCampsList();
-        StateHasChanged();
+        Logger.LogInformation("Filters cleared");
+        await Task.CompletedTask;
     }
 
-    private void SortCampsList()
+    private void NavigateToCamp(int campId)
     {
-        filteredCamps = sortBy switch
-        {
-            "price-asc" => filteredCamps.OrderBy(c => c.Price).ToList(),
-            "price-desc" => filteredCamps.OrderByDescending(c => c.Price).ToList(),
-            "availability" => filteredCamps.OrderByDescending(c => c.AvailableSpots).ToList(),
-            _ => filteredCamps.OrderBy(c => c.Name).ToList()
-        };
+        Navigation.NavigateTo($"/tabor/{campId}");
     }
 
-    private static string GetCampIcon(string type)
+    private void NavigateToRegistration(int campId)
     {
-        return type switch
-        {
-            "adventure" => "fas fa-mountain",
-            "sport" => "fas fa-volleyball-ball",
-            "creative" => "fas fa-palette",
-            "science" => "fas fa-microscope",
-            "water" => "fas fa-swimmer",
-            _ => "fas fa-campground"
-        };
+        Navigation.NavigateTo($"/registrace/{campId}");
     }
 
-    private static string GetCampTypeText(string type)
+    private static string GetCampTypeDisplay(string type)
     {
         return type switch
         {
             "adventure" => "Dobrodružný",
             "sport" => "Sportovní",
             "creative" => "Kreativní",
-            "science" => "Vědecký",
             "water" => "Vodácký",
-            _ => "Tábor"
-        };
-    }
-
-    private static string GetAvailabilityBadge(int spots)
-    {
-        return spots switch
-        {
-            0 => "bg-danger",
-            <= 5 => "bg-warning",
-            _ => "bg-success"
-        };
-    }
-
-    private static string GetAvailabilityText(int spots)
-    {
-        return spots switch
-        {
-            0 => "Obsazeno",
-            <= 5 => "Poslední místa",
-            _ => "Volná místa"
+            "science" => "Vědecký",
+            _ => "Ostatní"
         };
     }
 }

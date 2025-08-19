@@ -1,386 +1,208 @@
 ﻿@page "/tabor/{id:int}"
 @using CampWeb.Models
 @using CampWeb.Services
-@inject ICampService CampService
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
+@inject ICampService CampService
+@inject ILogger<CampDetail> Logger
+@rendermode InteractiveServer
 
-<PageTitle>@(camp?.Name ?? "Tábor") - Letní Tábory Plzeň</PageTitle>
+<PageTitle>Detail tábora</PageTitle>
 
-@if (camp == null)
-{
-    <div class="container my-5 text-center">
-        <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Načítání...</span>
+<div class="container mt-4">
+    @if (isLoading)
+    {
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Načítání...</span>
+            </div>
         </div>
-    </div>
-}
-else
-{
-    <!-- Hero Section -->
-    <section class="camp-hero" style="background-image: url('@(camp.Images.FirstOrDefault() ?? "/images/camp-placeholder.jpg")')">
-        <div class="hero-overlay">
-            <div class="container">
-                <div class="row">
-                    <div class="col-lg-8">
-                        <h1 class="display-4 text-white mb-3">@camp.Name</h1>
-                        <p class="lead text-white mb-4">
-                            <i class="fas fa-map-marker-alt me-2"></i>@camp.Location
-                        </p>
-                        <div class="d-flex flex-wrap gap-2 mb-4">
-                            <span class="badge bg-light text-dark fs-6">@camp.AgeGroup let</span>
-                            <span class="badge @GetAvailabilityBadge(camp.AvailableSpots) fs-6">
-                                @GetAvailabilityText(camp.AvailableSpots)
-                            </span>
-                        </div>
-                        <div class="d-flex gap-3">
-                            @if (camp.AvailableSpots > 0)
-                            {
-                                <button class="btn btn-primary btn-lg" @onclick="ShowRegistrationModal">
-                                    <i class="fas fa-user-plus me-2"></i>Přihlásit se
-                                </button>
-                            }
-                            <button class="btn btn-outline-light btn-lg" @onclick="ShowPhotosModal">
-                                <i class="fas fa-images me-2"></i>Fotogalerie
-                            </button>
-                        </div>
+    }
+    else if (camp == null)
+    {
+        <div class="alert alert-warning">
+            <h4>Tábor nenalezen</h4>
+            <p>Požadovaný tábor nebyl nalezen v databázi.</p>
+            <a href="/tabory" class="btn btn-primary">Zpět na seznam táborů</a>
+        </div>
+    }
+    else
+    {
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">Domů</a></li>
+                <li class="breadcrumb-item"><a href="/tabory">Tábory</a></li>
+                <li class="breadcrumb-item active" aria-current="page">@camp.Name</li>
+            </ol>
+        </nav>
+
+        <div class="row">
+            <div class="col-lg-8">
+                <h1 class="mb-3">@camp.Name</h1>
+                <p class="lead">@camp.ShortDescription</p>
+
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h5 class="card-title">O táboru</h5>
+                        <p>@camp.Description</p>
+
+                        @if (camp.Activities?.Any() == true)
+                        {
+                            <h6 class="mt-4">Program zahrnuje:</h6>
+                            <ul>
+                                @foreach (var activity in camp.Activities)
+                                {
+                                    <li>@activity</li>
+                                }
+                            </ul>
+                        }
                     </div>
-                    <div class="col-lg-4 text-end">
-                        <div class="price-card">
-                            <h3 class="price">@camp.Price Kč</h3>
-                            <p class="text-muted mb-0">za týden</p>
-                        </div>
+                </div>
+
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h5 class="card-title">Lokace</h5>
+                        <p><i class="fas fa-map-marker-alt"></i> @camp.Location</p>
+                        <div id="campMap" style="height: 300px; border-radius: 10px;"></div>
                     </div>
                 </div>
             </div>
-        </div>
-    </section>
 
-    <!-- Camp Details -->
-    <section class="py-5">
-        <div class="container">
-            <div class="row">
-                <div class="col-lg-8 mb-4">
-                    <div class="card">
-                        <div class="card-body">
-                            <h3 class="card-title">O táboře</h3>
-                            <p class="card-text">@camp.Description</p>
-                            
-                            <h4 class="mt-4">Aktivity</h4>
-                            <div class="activities-list">
-                                @foreach (var activity in camp.Activities)
-                                {
-                                    <span class="badge bg-primary me-2 mb-2">@activity</span>
-                                }
-                            </div>
+            <div class="col-lg-4">
+                <div class="card sticky-top" style="top: 20px;">
+                    <div class="card-body">
+                        <h5 class="card-title">Informace o táboru</h5>
 
-                            <div class="row mt-4">
-                                <div class="col-md-6">
-                                    <h5><i class="fas fa-calendar-alt me-2"></i>Termín</h5>
-                                    <p>@camp.StartDate.ToString("dd.MM.yyyy") - @camp.EndDate.ToString("dd.MM.yyyy")</p>
-                                </div>
-                                <div class="col-md-6">
-                                    <h5><i class="fas fa-users me-2"></i>Volná místa</h5>
-                                    <p>@camp.AvailableSpots z celkové kapacity</p>
-                                </div>
-                            </div>
+                        <div class="mb-3">
+                            <strong>Typ tábora:</strong><br/>
+                            <span class="badge bg-info">@GetCampTypeLabel(camp.Type)</span>
                         </div>
-                    </div>
 
-                    <!-- Live Updates -->
-                    <div class="card mt-4">
-                        <div class="card-header">
-                            <h4 class="mb-0"><i class="fas fa-broadcast-tower me-2"></i>Živé zprávy z tábora</h4>
+                        <div class="mb-3">
+                            <strong>Termín:</strong><br/>
+                            @camp.StartDate.ToString("d. M. yyyy") - @camp.EndDate.ToString("d. M. yyyy")
                         </div>
-                        <div class="card-body">
-                            @if (liveUpdates.Any())
+
+                        <div class="mb-3">
+                            <strong>Věková kategorie:</strong><br/>
+                            @camp.AgeGroup let
+                        </div>
+
+                        <div class="mb-3">
+                            <strong>Cena:</strong><br/>
+                            <span class="h4 text-primary">@camp.Price.ToString("N0") Kč</span> / týden
+                        </div>
+
+                        <div class="mb-3">
+                            <strong>Volná místa:</strong><br/>
+                            @if (camp.AvailableSpots == 0)
                             {
-                                @foreach (var update in liveUpdates)
-                                {
-                                    <div class="live-update mb-3">
-                                        <div class="d-flex justify-content-between align-items-start">
-                                            <h6>@update.Title</h6>
-                                            <small class="text-muted">@update.CreatedAt.ToString("dd.MM HH:mm")</small>
-                                        </div>
-                                        <p>@update.Content</p>
-                                        @if (!string.IsNullOrEmpty(update.PhotoUrl))
-                                        {
-                                            <img src="@update.PhotoUrl" alt="Foto z tábora" class="img-fluid rounded mt-2" style="max-height: 200px;" />
-                                        }
-                                    </div>
-                                    <hr />
-                                }
+                                <span class="badge bg-danger">Obsazeno</span>
+                            }
+                            else if (camp.AvailableSpots <= 5)
+                            {
+                                <span class="badge bg-warning">Poslední @camp.AvailableSpots místa</span>
                             }
                             else
                             {
-                                <p class="text-muted">Zatím žádné zprávy z tábora. Během konání tábora zde najdete aktuální informace a fotky!</p>
+                                <span class="badge bg-success">@camp.AvailableSpots volných míst</span>
                             }
                         </div>
-                    </div>
-                </div>
 
-                <div class="col-lg-4">
-                    <!-- Contact Card -->
-                    <div class="card mb-4">
-                        <div class="card-header">
-                            <h5 class="mb-0"><i class="fas fa-phone me-2"></i>Kontakt</h5>
-                        </div>
-                        <div class="card-body">
-                            <p><strong>Email:</strong> info@letnítabory.cz</p>
-                            <p><strong>Telefon:</strong> +420 123 456 789</p>
-                            <p><strong>Adresa:</strong> @camp.Location</p>
-                        </div>
-                    </div>
+                        <button class="btn btn-primary w-100 mb-2" @onclick="RegisterForCamp"
+                                disabled="@(camp.AvailableSpots == 0)">
+                            <i class="fas fa-user-plus"></i> Přihlásit se
+                        </button>
 
-                    <!-- Map Card -->
-                    <div class="card">
-                        <div class="card-header">
-                            <h5 class="mb-0"><i class="fas fa-map-marked-alt me-2"></i>Poloha</h5>
-                        </div>
-                        <div class="card-body p-0">
-                            <div id="campMap" style="height: 250px;"></div>
-                        </div>
+                        <button class="btn btn-outline-primary w-100" @onclick="ContactUs">
+                            <i class="fas fa-envelope"></i> Kontaktovat nás
+                        </button>
                     </div>
                 </div>
             </div>
         </div>
-    </section>
-}
-
-<!-- Registration Modal -->
-<div class="modal fade" id="registrationModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Přihlášení na tábor: @camp?.Name</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <EditForm Model="registration" OnValidSubmit="HandleRegistration">
-                    <DataAnnotationsValidator />
-                    <ValidationSummary class="text-danger" />
-
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Jméno dítěte *</label>
-                            <InputText @bind-Value="registration.ChildName" class="form-control" />
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Příjmení dítěte *</label>
-                            <InputText @bind-Value="registration.ChildSurname" class="form-control" />
-                        </div>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Datum narození dítěte *</label>
-                        <InputDate @bind-Value="registration.ChildBirthDate" class="form-control" />
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Jméno zákonného zástupce *</label>
-                            <InputText @bind-Value="registration.ParentName" class="form-control" />
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Email *</label>
-                            <InputText @bind-Value="registration.ParentEmail" class="form-control" type="email" />
-                        </div>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">Telefon *</label>
-                        <InputText @bind-Value="registration.ParentPhone" class="form-control" />
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label">
-                            <InputCheckbox @bind-Value="registration.HasMedicalIssues" /> 
-                            Dítě má zdravotní problémy/alergie
-                        </label>
-                    </div>
-
-                    @if (registration.HasMedicalIssues)
-                    {
-                        <div class="mb-3">
-                            <label class="form-label">Popis zdravotních problémů/alergií</label>
-                            <InputTextArea @bind-Value="registration.MedicalIssuesDescription" class="form-control" rows="3" />
-                        </div>
-                    }
-
-                    <div class="mb-3">
-                        <label class="form-label">Speciální požadavky</label>
-                        <InputTextArea @bind-Value="registration.SpecialRequirements" class="form-control" rows="3" />
-                    </div>
-
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Zrušit</button>
-                        <button type="submit" class="btn btn-primary">Odeslat přihlášku</button>
-                    </div>
-                </EditForm>
-            </div>
-        </div>
-    </div>
+    }
 </div>
-
-<!-- Photos Modal -->
-<div class="modal fade" id="photosModal" tabindex="-1">
-    <div class="modal-dialog modal-xl">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Fotogalerie - @camp?.Name</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="row">
-                    @if (camp?.Images.Any() == true)
-                    {
-                        @foreach (var image in camp.Images)
-                        {
-                            <div class="col-md-4 mb-3">
-                                <img src="@image" alt="Foto z tábora" class="img-fluid rounded" />
-                            </div>
-                        }
-                    }
-                    else
-                    {
-                        <p class="text-muted">Zatím žádné fotky. Během tábora zde najdete aktuální fotografie!</p>
-                    }
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<style>
-    .camp-hero {
-        height: 400px;
-        background-size: cover;
-        background-position: center;
-        position: relative;
-        display: flex;
-        align-items: center;
-    }
-
-    .hero-overlay {
-        background: linear-gradient(135deg, rgba(44, 90, 160, 0.8), rgba(30, 61, 114, 0.8));
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        display: flex;
-        align-items: center;
-    }
-
-    .price-card {
-        background: rgba(255, 255, 255, 0.9);
-        padding: 20px;
-        border-radius: 15px;
-        text-align: center;
-    }
-
-    .price {
-        color: var(--primary-color);
-        font-weight: bold;
-        margin-bottom: 5px;
-    }
-
-    .activities-list .badge {
-        font-size: 0.9rem;
-    }
-
-    .live-update {
-        border-left: 3px solid var(--primary-color);
-        padding-left: 15px;
-    }
-</style>
 
 @code {
     [Parameter] public int Id { get; set; }
-    
+
     private Camp? camp;
-    private Registration registration = new();
-    private List<LiveUpdate> liveUpdates = new();
+    private bool isLoading = true;
+    private bool mapInitialized = false;
 
     protected override async Task OnInitializedAsync()
     {
-        camp = await CampService.GetCampByIdAsync(Id);
-        
-        if (camp == null)
-        {
-            Navigation.NavigateTo("/");
-            return;
-        }
+        await LoadCampDataAsync();
+    }
 
-        registration.CampId = camp.Id;
-        
-        // Simulate some live updates
-        liveUpdates = new List<LiveUpdate>
+    private async Task LoadCampDataAsync()
+    {
+        isLoading = true;
+
+        try
         {
-            new() 
-            { 
-                Title = "Ráno v táboře", 
-                Content = "Děti se vzbudily do krásného slunečného dne! Po snídani jedeme na výlet.",
-                CreatedAt = DateTime.Now.AddHours(-2)
-            },
-            new() 
-            { 
-                Title = "Oběd je hotov", 
-                Content = "Vařili jsme guláš s knedlíkem. Všem moc chutnal!",
-                CreatedAt = DateTime.Now.AddHours(-4)
+            Logger.LogInformation("Loading camp data for ID: {CampId}", Id);
+            camp = await CampService.GetCampByIdAsync(Id);
+            
+            if (camp != null)
+            {
+                Logger.LogInformation("Successfully loaded camp: {CampName}", camp.Name);
             }
-        };
+            else
+            {
+                Logger.LogWarning("Camp not found with ID: {CampId}", Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading camp data for ID: {CampId}", Id);
+            camp = null;
+        }
+        finally
+        {
+            isLoading = false;
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && camp != null)
+        if (firstRender && camp != null && !mapInitialized)
         {
-            await JSRuntime.InvokeVoidAsync("initializeCampMap", camp.Latitude, camp.Longitude, camp.Name);
+            try
+            {
+                // Inicializace mapy pro konkrétní tábor
+                await JSRuntime.InvokeVoidAsync("initializeCampMap", camp.Latitude, camp.Longitude, camp.Name);
+                mapInitialized = true;
+                Logger.LogInformation("Map initialized for camp: {CampName}", camp.Name);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error initializing map for camp: {CampName}", camp?.Name);
+            }
         }
     }
 
-    private async Task ShowRegistrationModal()
+    private void RegisterForCamp()
     {
-        await JSRuntime.InvokeVoidAsync("showModal", "registrationModal");
+        Navigation.NavigateTo($"/registrace?campId={Id}");
     }
 
-    private async Task ShowPhotosModal()
+    private void ContactUs()
     {
-        await JSRuntime.InvokeVoidAsync("showModal", "photosModal");
+        Navigation.NavigateTo($"/kontakt?subject=Dotaz k táboru: {camp?.Name}");
     }
 
-    private async Task HandleRegistration()
+    private string GetCampTypeLabel(string type)
     {
-        // Generate access code
-        registration.AccessCode = Guid.NewGuid().ToString("N")[..8].ToUpper();
-        
-        // Here you would normally save to database
-        // For demo, just show success message
-        await JSRuntime.InvokeVoidAsync("hideModal", "registrationModal");
-        await JSRuntime.InvokeVoidAsync("showAlert", $"Přihláška byla úspěšně odeslána! Váš přístupový kód: {registration.AccessCode}");
-        
-        // Navigate to payment
-        Navigation.NavigateTo($"/platba/{registration.AccessCode}");
-    }
-
-    private static string GetAvailabilityBadge(int spots)
-    {
-        return spots switch
+        return type switch
         {
-            0 => "bg-danger",
-            <= 5 => "bg-warning",
-            _ => "bg-success"
-        };
-    }
-
-    private static string GetAvailabilityText(int spots)
-    {
-        return spots switch
-        {
-            0 => "Obsazeno",
-            <= 5 => "Poslední místa",
-            _ => "Volná místa"
+            "sport" => "⚽ Sportovní",
+            "adventure" => "🏔️ Dobrodružný",
+            "creative" => "🎨 Kreativní",
+            "science" => "🔬 Vědecký",
+            "water" => "🏊 Vodní",
+            _ => "🏕️ Tábor"
         };
     }
 }
