@@ -118,44 +118,71 @@
                                     Způsob platby
                                 </h4>
 
-                                <!-- Google Pay Section -->
-                                <div class="payment-method-card mb-4">
-                                    <div class="card border-0 shadow-sm bg-light">
-                                        <div class="card-body p-4">
-                                            <div class="row align-items-center">
-                                                <div class="col-md-6">
-                                                    <div class="d-flex align-items-center mb-3">
-                                                        <i class="fab fa-google-pay text-primary me-3" style="font-size: 2rem;"></i>
-                                                        <div>
-                                                            <h5 class="mb-1 fw-bold">Google Pay</h5>
-                                                            <p class="text-muted small mb-0">Rychlé a bezpečné placení</p>
-                                                        </div>
-                                                    </div>
-                                                    <div class="google-pay-features">
-                                                        <small class="text-success d-block">
-                                                            <i class="fas fa-shield-alt me-1"></i>
-                                                            Šifrované a bezpečné
-                                                        </small>
-                                                        <small class="text-success d-block">
-                                                            <i class="fas fa-bolt me-1"></i>
-                                                            Okamžité zpracování
-                                                        </small>
-                                                        <small class="text-success d-block">
-                                                            <i class="fas fa-check me-1"></i>
-                                                            Bez zadávání údajů
-                                                        </small>
+                                <!-- Digital Payment Methods -->
+                                <div class="col">
+                                    <!-- Google Pay Section -->
+                                    <div class="col-md-12 mb-12">
+                                        <div class="card border-0 shadow-sm bg-light h-100">
+                                            <div class="card-body p-4">
+                                                <div class="d-flex align-items-center mb-3">
+                                                    <i class="fab fa-google-pay text-primary me-3" style="font-size: 2rem;"></i>
+                                                    <div>
+                                                        <h5 class="mb-1 fw-bold">Google Pay</h5>
+                                                        <p class="text-muted small mb-0">Pro Android zařízení</p>
                                                     </div>
                                                 </div>
-                                                <div class="col-md-6">
-                                                    <div class="google-pay-container text-center">
-                                                        <!-- Google Pay Button Container -->
-                                                        <div id="google-pay-button-container" style="min-height: 50px;">
-                                                            <div class="text-muted">
-                                                                <small>
-                                                                    <i class="fas fa-info-circle me-1"></i>
-                                                                    Google Pay se načítá...
-                                                                </small>
-                                                            </div>
+                                                <div class="payment-features mb-3">
+                                                    <small class="text-success d-block">
+                                                        <i class="fas fa-shield-alt me-1"></i>
+                                                        Šifrované a bezpečné
+                                                    </small>
+                                                    <small class="text-success d-block">
+                                                        <i class="fas fa-bolt me-1"></i>
+                                                        Okamžité zpracování
+                                                    </small>
+                                                </div>
+                                                <div class="google-pay-container text-center">
+                                                    <div id="google-pay-button-container" style="min-height: 50px;">
+                                                        <div class="text-muted">
+                                                            <small>
+                                                                <i class="fas fa-info-circle me-1"></i>
+                                                                Google Pay se načítá...
+                                                            </small>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <br>
+                                    <!-- Apple Pay Section -->
+                                    <div class="col-md-12 mb-12">
+                                        <div class="card border-0 shadow-sm bg-light h-100">
+                                            <div class="card-body p-4">
+                                                <div class="d-flex align-items-center mb-3">
+                                                    <i class="fab fa-apple-pay text-dark me-3" style="font-size: 2rem;"></i>
+                                                    <div>
+                                                        <h5 class="mb-1 fw-bold">Apple Pay</h5>
+                                                        <p class="text-muted small mb-0">Pro Apple zařízení</p>
+                                                    </div>
+                                                </div>
+                                                <div class="payment-features mb-3">
+                                                    <small class="text-success d-block">
+                                                        <i class="fas fa-fingerprint me-1"></i>
+                                                        Touch/Face ID ověření
+                                                    </small>
+                                                    <small class="text-success d-block">
+                                                        <i class="fas fa-lock me-1"></i>
+                                                        Maximální bezpečnost
+                                                    </small>
+                                                </div>
+                                                <div class="apple-pay-container text-center">
+                                                    <div id="apple-pay-button-container" style="min-height: 50px;">
+                                                        <div class="text-muted">
+                                                            <small>
+                                                                <i class="fas fa-info-circle me-1"></i>
+                                                                Apple Pay se načítá...
+                                                            </small>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -296,6 +323,7 @@
     private bool isProcessing = false;
     private string errorMessage = "";
     private string successMessage = "";
+    private bool showDebugButtons = true; // Enable debug buttons for testing
 
     protected override async Task OnInitializedAsync()
     {
@@ -303,7 +331,6 @@
         {
             await LoadCurrentUser();
             await LoadRegistration();
-            // Don't call InitializeGooglePay here - JavaScript is not available during server-side rendering
         }
         catch (Exception ex)
         {
@@ -323,10 +350,11 @@
             try
             {
                 await InitializeGooglePay();
+                await InitializeApplePay();
             }
             catch (Exception ex)
             {
-                Logger.LogError(ex, "Error initializing Google Pay");
+                Logger.LogError(ex, "Error initializing payment methods");
                 StateHasChanged();
             }
         }
@@ -369,17 +397,19 @@
         try
         {
             // Wait a bit to ensure scripts are loaded
-            await Task.Delay(200);
+            await Task.Delay(500);
             
             // Check if the function exists first
-            var functionExists = await JSRuntime.InvokeAsync<bool>("eval", "typeof initializeGooglePay === 'function'");
+            var functionExists = await JSRuntime.InvokeAsync<bool>("eval", "typeof window.initializeGooglePay === 'function'");
+            Logger.LogInformation("Google Pay function exists: {Exists}", functionExists);
         
             if (!functionExists)
             {
                 Logger.LogWarning("Google Pay script not yet loaded, retrying...");
                 // Retry after a longer delay
-                await Task.Delay(1000);
-                functionExists = await JSRuntime.InvokeAsync<bool>("eval", "typeof initializeGooglePay === 'function'");
+                await Task.Delay(1500);
+                functionExists = await JSRuntime.InvokeAsync<bool>("eval", "typeof window.initializeGooglePay === 'function'");
+                Logger.LogInformation("Google Pay function exists after retry: {Exists}", functionExists);
             }
 
             if (functionExists)
@@ -390,11 +420,15 @@
             }
             else
             {
-                Logger.LogError("Google Pay script failed to load");
+                Logger.LogError("Google Pay script failed to load - function not found");
+                // Check if Google Pay API is loaded
+                var apiLoaded = await JSRuntime.InvokeAsync<bool>("eval", "typeof google !== 'undefined' && google.payments && google.payments.api");
+                Logger.LogInformation("Google Pay API loaded: {Loaded}", apiLoaded);
+                
                 try
                 {
-                    await JSRuntime.InvokeVoidAsync("updateGooglePayContainer", 
-                        "<div class='text-muted small text-center'><i class='fas fa-exclamation-circle me-1'></i>Google Pay není dostupný</div>");
+                    await JSRuntime.InvokeVoidAsync("eval", 
+                        "document.getElementById('google-pay-button-container').innerHTML = '<div class=\"text-muted small text-center\"><i class=\"fas fa-exclamation-circle me-1\"></i>Google Pay není dostupný</div>'");
                 }
                 catch
                 {
@@ -407,8 +441,78 @@
             Logger.LogError(ex, "Failed to initialize Google Pay");
             try
             {
-                await JSRuntime.InvokeVoidAsync("updateGooglePayContainer", 
-                    "<div class='text-muted small text-center'><i class='fas fa-exclamation-circle me-1'></i>Chyba při načítání Google Pay</div>");
+                await JSRuntime.InvokeVoidAsync("eval", 
+                    "document.getElementById('google-pay-button-container').innerHTML = '<div class=\"text-muted small text-center\"><i class=\"fas fa-exclamation-circle me-1\"></i>Chyba při načítání Google Pay</div>'");
+            }
+            catch
+            {
+                // Ignore if container update fails
+            }
+        }
+    }
+    
+    private async Task InitializeApplePay()
+    {
+        if (registration == null) return;
+
+        var paymentData = new
+        {
+            merchantId = "merchant.com.letnitabory", // Your Apple merchant ID
+            amount = registration.Camp.Price.ToString("F2", System.Globalization.CultureInfo.InvariantCulture),
+            currency = "CZK",
+            registrationId = registration.Id,
+            description = $"Platba za tábor: {registration.Camp.Name}"
+        };
+
+        try
+        {
+            // Wait a bit to ensure scripts are loaded
+            await Task.Delay(500);
+            
+            // Check if the function exists first
+            var functionExists = await JSRuntime.InvokeAsync<bool>("eval", "typeof window.initializeApplePay === 'function'");
+            Logger.LogInformation("Apple Pay function exists: {Exists}", functionExists);
+        
+            if (!functionExists)
+            {
+                Logger.LogWarning("Apple Pay script not yet loaded, retrying...");
+                // Retry after a longer delay
+                await Task.Delay(1500);
+                functionExists = await JSRuntime.InvokeAsync<bool>("eval", "typeof window.initializeApplePay === 'function'");
+                Logger.LogInformation("Apple Pay function exists after retry: {Exists}", functionExists);
+            }
+
+            if (functionExists)
+            {
+                await JSRuntime.InvokeVoidAsync("initializeApplePay", paymentData, 
+                    DotNetObjectReference.Create(this));
+                Logger.LogInformation("Apple Pay initialized successfully");
+            }
+            else
+            {
+                Logger.LogError("Apple Pay script failed to load - function not found");
+                // Check if Apple Pay Session is available
+                var apiLoaded = await JSRuntime.InvokeAsync<bool>("eval", "typeof window.ApplePaySession !== 'undefined'");
+                Logger.LogInformation("Apple Pay Session available: {Available}", apiLoaded);
+                
+                try
+                {
+                    await JSRuntime.InvokeVoidAsync("eval", 
+                        "document.getElementById('apple-pay-button-container').innerHTML = '<div class=\"text-muted small text-center\"><i class=\"fas fa-exclamation-circle me-1\"></i>Apple Pay není dostupný</div>'");
+                }
+                catch
+                {
+                    // Ignore if container update fails
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to initialize Apple Pay");
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("eval", 
+                    "document.getElementById('apple-pay-button-container').innerHTML = '<div class=\"text-muted small text-center\"><i class=\"fas fa-exclamation-circle me-1\"></i>Chyba při načítání Apple Pay</div>'");
             }
             catch
             {
@@ -471,6 +575,76 @@
     {
         // Google Pay je připraven
         Logger.LogInformation("Google Pay button is ready");
+    }
+    
+    [JSInvokable]
+    public async Task<string> ValidateApplePayMerchant(string validationUrl)
+    {
+        // In production, you would call Apple's server to validate
+        // For testing, return a mock merchant session
+        Logger.LogInformation("Validating Apple Pay merchant: {Url}", validationUrl);
+        
+        // This would be replaced with actual Apple Pay merchant validation
+        await Task.Delay(100);
+        return "{}"; // Return actual merchant session from Apple in production
+    }
+    
+    [JSInvokable]
+    public async Task ProcessApplePayPayment(string paymentToken)
+    {
+        if (registration == null) return;
+
+        isProcessing = true;
+        errorMessage = "";
+        successMessage = "";
+        StateHasChanged();
+
+        try
+        {
+            // In production, you would process the Apple Pay token
+            // For now, we'll use the same payment service
+            var result = await PaymentService.ProcessGooglePayPaymentAsync(
+                registration.Id, paymentToken, registration.Camp.Price);
+
+            if (result.IsSuccess)
+            {
+                successMessage = "Platba byla úspěšně zpracována! Přesměrováváme vás...";
+                registration.Status = RegistrationStatus.Paid;
+                StateHasChanged();
+                
+                await Task.Delay(3000);
+                Navigation.NavigateTo($"/potvrzeni/{registration.AccessCode}");
+            }
+            else
+            {
+                errorMessage = $"Platba se nezdařila: {result.ErrorMessage}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error processing Apple Pay payment");
+            errorMessage = "Došlo k chybě při zpracování platby.";
+        }
+        finally
+        {
+            isProcessing = false;
+            StateHasChanged();
+        }
+    }
+    
+    [JSInvokable]
+    public void OnApplePayError(string error)
+    {
+        Logger.LogWarning("Apple Pay error: {Error}", error);
+        var container = JSRuntime.InvokeVoidAsync("updateApplePayContainer", 
+            "<div class='text-muted small text-center'><i class='fas fa-exclamation-circle me-1'></i>Apple Pay není dostupný</div>");
+    }
+    
+    [JSInvokable]
+    public void OnApplePayReady()
+    {
+        // Apple Pay je připraven
+        Logger.LogInformation("Apple Pay button is ready");
     }
 }
 
