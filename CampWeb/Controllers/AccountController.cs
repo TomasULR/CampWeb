@@ -8,13 +8,16 @@ namespace CampWeb.Controllers;
 public class AccountController : Controller
 {
     private readonly SignInManager<ApplicationUser> _signInManager;
+    private readonly UserManager<ApplicationUser> _userManager;
     private readonly ILogger<AccountController> _logger;
 
     public AccountController(
         SignInManager<ApplicationUser> signInManager,
+        UserManager<ApplicationUser> userManager,
         ILogger<AccountController> logger)
     {
         _signInManager = signInManager;
+        _userManager = userManager;
         _logger = logger;
     }
 
@@ -28,14 +31,30 @@ public class AccountController : Controller
         if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password))
         {
             _logger.LogWarning("Login attempt with missing email or password");
-            return LocalRedirect($"/prihlaseni?error={Uri.EscapeDataString("Email a heslo jsou povinné")}&returnUrl={Uri.EscapeDataString(returnUrl)}");
+            return LocalRedirect(
+                $"/prihlaseni?error={Uri.EscapeDataString("Email a heslo jsou povinné")}&returnUrl={Uri.EscapeDataString(returnUrl)}");
         }
 
-        var result = await _signInManager.PasswordSignInAsync(email, password, isPersistent: false, lockoutOnFailure: true);
+        // Find user by email first
+        var user = await _userManager.FindByEmailAsync(email);
+        if (user == null)
+        {
+            _logger.LogWarning("No user found with email {Email}", email);
+            return LocalRedirect(
+                $"/prihlaseni?error={Uri.EscapeDataString("Nesprávné přihlašovací údaje")}&returnUrl={Uri.EscapeDataString(returnUrl)}");
+        }
+
+        // Sign in using the user object directly
+        var result = await _signInManager.PasswordSignInAsync(user, password, isPersistent: false, lockoutOnFailure: true);
 
         if (result.Succeeded)
         {
             _logger.LogInformation("User {Email} logged in successfully", email);
+            
+            // Optional: Update last login time
+            user.LastLoginAt = DateTime.UtcNow;
+            await _userManager.UpdateAsync(user);
+            
             return LocalRedirect(returnUrl);
         }
 
@@ -56,7 +75,8 @@ public class AccountController : Controller
             errorMessage = "Nesprávné přihlašovací údaje";
         }
 
-        return LocalRedirect($"/prihlaseni?error={Uri.EscapeDataString(errorMessage)}&returnUrl={Uri.EscapeDataString(returnUrl)}");
+        return LocalRedirect(
+            $"/prihlaseni?error={Uri.EscapeDataString(errorMessage)}&returnUrl={Uri.EscapeDataString(returnUrl)}");
     }
 
     [HttpPost("logout")]

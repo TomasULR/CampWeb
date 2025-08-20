@@ -19,6 +19,7 @@ builder.Services.AddCascadingAuthenticationState();
 // Use AddControllersWithViews instead of AddControllers
 builder.Services.AddControllersWithViews();
 builder.Services.AddAntiforgery();
+builder.Services.AddHttpContextAccessor();
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
@@ -200,7 +201,7 @@ static async Task SeedUsersAsync(UserManager<ApplicationUser> userManager,
     {
         adminUser = new ApplicationUser
         {
-            UserName = "admin",
+            UserName = adminEmail,
             Email = adminEmail,
             FirstName = "Admin",
             LastName = "Táborů",
@@ -231,7 +232,7 @@ static async Task SeedUsersAsync(UserManager<ApplicationUser> userManager,
     {
         parentUser = new ApplicationUser
         {
-            UserName = "rodic",
+            UserName = parentEmail,
             Email = parentEmail,
             FirstName = "Jan",
             LastName = "Novák",
