@@ -1,0 +1,808 @@
+﻿@page "/admin/timeline"
+@page "/admin/timeline/{campId:int}"
+@using System.ComponentModel.DataAnnotations
+@using CampWeb.Models
+@using CampWeb.Services
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@inject ICampService CampService
+@inject IPhotoService PhotoService
+@inject IJSRuntime JSRuntime
+@inject ILogger<AdminTimeline> Logger
+@attribute [Authorize(Roles = "Admin,SuperAdmin")]
+@layout AdminLayout
+@rendermode InteractiveServer
+
+<PageTitle>Fotky a zprávy - Admin Panel</PageTitle>
+
+<CascadingValue Value="@("Fotky a zprávy")" Name="BreadcrumbTitle">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-0">📸 Fotky a zprávy z táborů</h1>
+                    <p class="text-muted">Spravujte obsah pro rodiče v reálném čase</p>
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-primary" @onclick="StartNewPost">
+                        <i class="fas fa-plus me-2"></i>
+                        Nový příspěvek
+                    </button>
+                    <button class="btn btn-outline-primary" @onclick="RefreshTimeline">
+                        <i class="fas fa-sync-alt me-2"></i>
+                        Obnovit
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Camp Selection -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <label class="form-label">📍 Vyberte tábor</label>
+                            <select class="form-select" @bind="selectedCampId" @bind:event="onchange" @bind:after="LoadTimeline">
+                                <option value="">Všechny tábory</option>
+                                @foreach (var camp in camps)
+                                {
+                                    <option value="@camp.Id">
+                                        @camp.Name (@camp.StartDate.ToString("dd.MM.yyyy"))
+                                    </option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">🎯 Filtr</label>
+                            <select class="form-select" @bind="contentFilter" @bind:event="onchange" @bind:after="FilterContent">
+                                <option value="all">Vše</option>
+                                <option value="photos">Pouze fotky</option>
+                                <option value="messages">Pouze zprávy</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-0 shadow-sm bg-gradient-primary text-white">
+                <div class="card-body text-center">
+                    <i class="fas fa-comments fa-2x mb-2"></i>
+                    <h4 class="mb-0">@timelineItems.Count</h4>
+                    <small>příspěvků celkem</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Post Area -->
+    @if (showQuickPost)
+    {
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card border-0 shadow-sm quick-post-card">
+                    <div class="card-body">
+                        <div class="d-flex align-items-start">
+                            <div class="admin-avatar me-3">
+                                <i class="fas fa-user-tie"></i>
+                            </div>
+                            <div class="flex-grow-1">
+                                <EditForm Model="quickPostForm" OnValidSubmit="PublishQuickPost">
+                                    <DataAnnotationsValidator />
+                                    
+                                    <div class="mb-3">
+                                        <InputTextArea @bind-Value="quickPostForm.Content" 
+                                                       class="form-control border-0 p-0" 
+                                                       rows="3" 
+                                                       placeholder="Co se děje v táboře? Napište zprávu pro rodiče..." 
+                                                       style="resize: none; font-size: 1.1rem;" />
+                                    </div>
+                                    
+                                    <!-- Photo Upload Area -->
+                                    <div class="upload-zone mb-3" @ondragover:preventDefault @ondrop="HandleDrop">
+                                        @if (quickPostForm.HasPhotos)
+                                        {
+                                            <div class="photo-preview-grid">
+                                                @foreach (var file in quickPostForm.Photos.Take(4))
+                                                {
+                                                    <div class="photo-preview-item">
+                                                        <i class="fas fa-image"></i>
+                                                        <span>@file.Name</span>
+                                                        <button type="button" class="btn-remove" @onclick="() => RemovePhoto(file)">×</button>
+                                                    </div>
+                                                }
+                                                @if (quickPostForm.Photos.Count > 4)
+                                                {
+                                                    <div class="photo-preview-more">
+                                                        +@(quickPostForm.Photos.Count - 4) dalších
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="upload-placeholder">
+                                                <i class="fas fa-images text-muted me-2"></i>
+                                                <span class="text-muted">Přetáhněte sem fotky nebo</span>
+                                                <InputFile OnChange="HandlePhotosSelected" multiple accept="image/*" class="d-none" @ref="fileInput" />
+                                                <button type="button" class="btn btn-link p-0" @onclick="() => fileInput?.Element?.ToString()">vyberte soubory</button>
+                                            </div>
+                                        }
+                                    </div>
+
+                                    <div class="post-actions d-flex justify-content-between align-items-center">
+                                        <div class="post-tools">
+                                            <button type="button" class="btn btn-sm btn-outline-secondary me-2" @onclick="AddPhoto">
+                                                <i class="fas fa-camera me-1"></i> Fotka
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary me-2" @onclick="AddEmoji">
+                                                <i class="fas fa-smile me-1"></i> Emoji
+                                            </button>
+                                            <small class="text-muted ms-2">
+                                                @if (!string.IsNullOrEmpty(selectedCampId))
+                                                {
+                                                    @(camps.FirstOrDefault(c => c.Id.ToString() == selectedCampId)?.Name ?? "Neznámý tábor")
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-warning">⚠️ Vyberte tábor</span>
+                                                }
+                                            </small>
+                                        </div>
+                                        <div class="publish-controls">
+                                            <button type="button" class="btn btn-sm btn-light me-2" @onclick="CancelQuickPost">
+                                                Zrušit
+                                            </button>
+                                            @if (isPublishing)
+                                            {
+                                                <button class="btn btn-sm btn-primary" type="button" disabled>
+                                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                                    Publikuje...
+                                                </button>
+                                            }
+                                            else
+                                            {
+                                                <button type="submit" class="btn btn-sm btn-primary" disabled="@(string.IsNullOrEmpty(selectedCampId))">
+                                                    <i class="fas fa-paper-plane me-1"></i>
+                                                    Odeslat
+                                                </button>
+                                            }
+                                        </div>
+                                    </div>
+                                </EditForm>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Timeline -->
+    <div class="row">
+        <div class="col-12">
+            <div class="timeline-container">
+                @if (isLoading)
+                {
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary mb-3"></div>
+                        <p class="text-muted">Načítání časové osy...</p>
+                    </div>
+                }
+                else if (!timelineItems.Any())
+                {
+                    <div class="empty-timeline">
+                        <i class="fas fa-comments fa-5x text-muted mb-4"></i>
+                        <h4 class="text-muted">Žádné příspěvky</h4>
+                        <p class="text-muted mb-4">
+                            @if (filteredTimelineItems.Any())
+                            {
+                                @:Žádný příspěvek neodpovídá vybraným filtrům.
+                            }
+                            else
+                            {
+                                @:Začněte sdílet fotky a zprávy pro rodiče!
+                            }
+                        </p>
+                        <button class="btn btn-primary" @onclick="StartNewPost">
+                            <i class="fas fa-plus me-2"></i>
+                            Vytvořit první příspěvek
+                        </button>
+                    </div>
+                }
+                else
+                {
+                    <div class="timeline">
+                        @foreach (var item in filteredTimelineItems.Take(displayCount))
+                        {
+                            <div class="timeline-item @(item.Type == "photo" ? "timeline-photo" : "timeline-message")">
+                                <div class="timeline-marker">
+                                    <i class="fas @(item.Type == "photo" ? "fa-camera" : "fa-comment-alt")"></i>
+                                </div>
+                                <div class="timeline-content">
+                                    <div class="timeline-header">
+                                        <div class="timeline-meta">
+                                            <strong class="camp-name">@GetCampName(item.CampId)</strong>
+                                            <span class="timeline-time">
+                                                <i class="fas fa-clock me-1"></i>
+                                                @item.CreatedAt.ToString("dd.MM.yyyy HH:mm")
+                                            </span>
+                                        </div>
+                                        <div class="timeline-actions">
+                                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditTimelineItem(item)">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteTimelineItem(item)">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    @if (item.Type == "photo")
+                                    {
+                                        <div class="photo-post">
+                                            @if (!string.IsNullOrEmpty(item.Content))
+                                            {
+                                                <p class="post-text">@item.Content</p>
+                                            }
+                                            <div class="photo-grid">
+                                                <img src="@item.PhotoUrl" alt="@item.Content" 
+                                                     class="img-fluid rounded cursor-pointer" 
+                                                     @onclick="() => OpenPhotoLightbox(item.PhotoUrl, item.Content)" />
+                                            </div>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="message-post">
+                                            <div class="message-bubble">
+                                                <p class="mb-0">@item.Content</p>
+                                            </div>
+                                        </div>
+                                    }
+
+                                    <div class="timeline-footer">
+                                        <small class="text-muted">
+                                            <i class="fas fa-eye me-1"></i>
+                                            Viditelné pro rodiče v táboru @GetCampName(item.CampId)
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+
+                        @if (filteredTimelineItems.Count > displayCount)
+                        {
+                            <div class="text-center py-4">
+                                <button class="btn btn-outline-primary" @onclick="LoadMoreItems">
+                                    <i class="fas fa-arrow-down me-2"></i>
+                                    Načíst další (@(filteredTimelineItems.Count - displayCount) zbývá)
+                                </button>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Photo Lightbox -->
+    @if (!string.IsNullOrEmpty(lightboxPhoto))
+    {
+        <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.9);">
+            <div class="modal-dialog modal-xl modal-dialog-centered">
+                <div class="modal-content bg-transparent border-0">
+                    <div class="modal-header border-0">
+                        <h5 class="text-white">@lightboxCaption</h5>
+                        <button type="button" class="btn-close btn-close-white" @onclick="CloseLightbox"></button>
+                    </div>
+                    <div class="modal-body text-center p-0">
+                        <img src="@lightboxPhoto" alt="@lightboxCaption" class="img-fluid rounded" style="max-height: 80vh;" />
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</CascadingValue>
+
+@code {
+    [Parameter] public int? CampId { get; set; }
+
+    private List<Camp> camps = new();
+    private List<TimelineItem> timelineItems = new();
+    private List<TimelineItem> filteredTimelineItems = new();
+    
+    private string selectedCampId = "";
+    private string contentFilter = "all";
+    private bool isLoading = true;
+    private bool showQuickPost = false;
+    private bool isPublishing = false;
+    private int displayCount = 10;
+
+    private QuickPostModel quickPostForm = new();
+    private InputFile fileInput = default!;
+
+    private string lightboxPhoto = "";
+    private string lightboxCaption = "";
+
+    public class TimelineItem
+    {
+        public int Id { get; set; }
+        public string Type { get; set; } = ""; // "photo" or "message"
+        public int CampId { get; set; }
+        public string Content { get; set; } = "";
+        public string? PhotoUrl { get; set; }
+        public DateTime CreatedAt { get; set; }
+    }
+
+    public class QuickPostModel
+    {
+        public string Content { get; set; } = "";
+        public List<IBrowserFile> Photos { get; set; } = new();
+        public bool HasPhotos => Photos.Any();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+        
+        if (CampId.HasValue)
+        {
+            selectedCampId = CampId.Value.ToString();
+            await LoadTimeline();
+        }
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            isLoading = true;
+            camps = await CampService.GetAllCampsAsync();
+            await LoadTimeline();
+            
+            Logger.LogInformation("Loaded {CampCount} camps", camps.Count);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading timeline data");
+            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se načíst data", "error");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadTimeline()
+    {
+        try
+        {
+            // Simulate loading timeline items (combine photos and messages)
+            var items = new List<TimelineItem>();
+            
+            // Add sample photos
+            var photos = camps.SelectMany(c => c.Photos ?? Enumerable.Empty<CampPhoto>())
+                             .Where(p => string.IsNullOrEmpty(selectedCampId) || p.CampId.ToString() == selectedCampId)
+                             .Select(p => new TimelineItem
+                             {
+                                 Id = p.Id,
+                                 Type = "photo",
+                                 CampId = p.CampId,
+                                 Content = p.Description ?? "",
+                                 PhotoUrl = p.FileName,
+                                 CreatedAt = p.UploadDate
+                             });
+            items.AddRange(photos);
+
+            // Add sample messages
+            var messages = camps.SelectMany(c => c.LiveUpdates ?? Enumerable.Empty<LiveUpdate>())
+                                .Where(u => string.IsNullOrEmpty(selectedCampId) || u.CampId.ToString() == selectedCampId)
+                                .Select(u => new TimelineItem
+                                {
+                                    Id = u.Id,
+                                    Type = u.PhotoUrl != null ? "photo" : "message",
+                                    CampId = u.CampId,
+                                    Content = u.Content,
+                                    PhotoUrl = u.PhotoUrl,
+                                    CreatedAt = u.CreatedAt
+                                });
+            items.AddRange(messages);
+
+            timelineItems = items.OrderByDescending(i => i.CreatedAt).ToList();
+            await FilterContent();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading timeline");
+        }
+    }
+
+    private async Task FilterContent()
+    {
+        var filtered = timelineItems.AsEnumerable();
+
+        filtered = contentFilter switch
+        {
+            "photos" => filtered.Where(i => i.Type == "photo"),
+            "messages" => filtered.Where(i => i.Type == "message"),
+            _ => filtered
+        };
+
+        filteredTimelineItems = filtered.OrderByDescending(i => i.CreatedAt).ToList();
+        displayCount = 10; // Reset display count when filtering
+        await Task.CompletedTask;
+    }
+
+    private void StartNewPost()
+    {
+        showQuickPost = true;
+        quickPostForm = new QuickPostModel();
+    }
+
+    private void CancelQuickPost()
+    {
+        showQuickPost = false;
+        quickPostForm = new QuickPostModel();
+    }
+
+    private async Task PublishQuickPost()
+    {
+        if (string.IsNullOrEmpty(selectedCampId))
+        {
+            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Vyberte prosím tábor", "error");
+            return;
+        }
+
+        try
+        {
+            isPublishing = true;
+            
+            // Simulate publishing
+            await Task.Delay(1500);
+
+            var newItem = new TimelineItem
+            {
+                Id = timelineItems.Count + 1,
+                Type = quickPostForm.HasPhotos ? "photo" : "message",
+                CampId = int.Parse(selectedCampId),
+                Content = quickPostForm.Content,
+                PhotoUrl = quickPostForm.HasPhotos ? "/uploads/sample-photo.jpg" : null,
+                CreatedAt = DateTime.Now
+            };
+
+            timelineItems.Insert(0, newItem);
+            await FilterContent();
+            
+            await JSRuntime.InvokeVoidAsync("showToast", "Úspěch", "Příspěvek byl publikován", "success");
+            
+            showQuickPost = false;
+            quickPostForm = new QuickPostModel();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error publishing post");
+            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se publikovat příspěvek", "error");
+        }
+        finally
+        {
+            isPublishing = false;
+        }
+    }
+
+    private async Task HandlePhotosSelected(InputFileChangeEventArgs e)
+    {
+        quickPostForm.Photos = e.GetMultipleFiles(10).ToList();
+        await Task.CompletedTask;
+    }
+
+    private void RemovePhoto(IBrowserFile file)
+    {
+        quickPostForm.Photos.Remove(file);
+    }
+
+    private async Task AddPhoto()
+    {
+        await JSRuntime.InvokeVoidAsync("eval", "document.querySelector('input[type=file]').click()");
+    }
+
+    private async Task AddEmoji()
+    {
+        quickPostForm.Content += " 😊";
+        await Task.CompletedTask;
+    }
+
+    private async Task RefreshTimeline()
+    {
+        await LoadTimeline();
+        await JSRuntime.InvokeVoidAsync("showToast", "Info", "Timeline byla obnovena", "info");
+    }
+
+    private void LoadMoreItems()
+    {
+        displayCount += 10;
+    }
+
+    private async Task EditTimelineItem(TimelineItem item)
+    {
+        await JSRuntime.InvokeVoidAsync("showToast", "Info", "Úprava příspěvků bude implementována", "info");
+    }
+
+    private async Task DeleteTimelineItem(TimelineItem item)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
+            "Opravdu chcete smazat tento příspěvek?");
+        
+        if (confirmed)
+        {
+            timelineItems.Remove(item);
+            await FilterContent();
+            await JSRuntime.InvokeVoidAsync("showToast", "Úspěch", "Příspěvek byl smazán", "success");
+        }
+    }
+
+    private void OpenPhotoLightbox(string? photoUrl, string caption)
+    {
+        if (!string.IsNullOrEmpty(photoUrl))
+        {
+            lightboxPhoto = photoUrl;
+            lightboxCaption = caption;
+        }
+    }
+
+    private void CloseLightbox()
+    {
+        lightboxPhoto = "";
+        lightboxCaption = "";
+    }
+
+    private async Task HandleDrop(DragEventArgs e)
+    {
+        // Handle drag & drop functionality
+        await Task.CompletedTask;
+    }
+
+    private string GetCampName(int campId)
+    {
+        return camps.FirstOrDefault(c => c.Id == campId)?.Name ?? "Neznámý tábor";
+    }
+}
+
+<style>
+    .timeline-container {
+        max-width: 800px;
+        margin: 0 auto;
+    }
+
+    .quick-post-card {
+        border: 2px dashed #dee2e6;
+        transition: border-color 0.3s ease;
+    }
+
+    .quick-post-card:hover {
+        border-color: #0d6efd;
+    }
+
+    .admin-avatar {
+        width: 50px;
+        height: 50px;
+        background: linear-gradient(45deg, #0d6efd, #6610f2);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 1.2rem;
+    }
+
+    .upload-zone {
+        min-height: 80px;
+        border: 2px dashed #dee2e6;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s ease;
+    }
+
+    .upload-zone:hover {
+        border-color: #0d6efd;
+        background-color: #f8f9ff;
+    }
+
+    .photo-preview-grid {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .photo-preview-item {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 8px 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        position: relative;
+    }
+
+    .btn-remove {
+        background: #dc3545;
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 20px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        cursor: pointer;
+    }
+
+    .timeline {
+        position: relative;
+    }
+
+    .timeline::before {
+        content: '';
+        position: absolute;
+        left: 30px;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: linear-gradient(to bottom, #0d6efd, #6610f2);
+    }
+
+    .timeline-item {
+        position: relative;
+        padding-left: 80px;
+        margin-bottom: 40px;
+    }
+
+    .timeline-marker {
+        position: absolute;
+        left: 15px;
+        top: 20px;
+        width: 30px;
+        height: 30px;
+        background: white;
+        border: 3px solid #0d6efd;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #0d6efd;
+        font-size: 12px;
+        z-index: 1;
+    }
+
+    .timeline-photo .timeline-marker {
+        border-color: #198754;
+        color: #198754;
+    }
+
+    .timeline-content {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .timeline-content:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+
+    .timeline-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #f8f9fa;
+    }
+
+    .timeline-meta {
+        flex-grow: 1;
+    }
+
+    .camp-name {
+        color: #0d6efd;
+        font-size: 0.9rem;
+    }
+
+    .timeline-time {
+        color: #6c757d;
+        font-size: 0.8rem;
+        margin-left: 10px;
+    }
+
+    .timeline-actions {
+        display: flex;
+        gap: 5px;
+    }
+
+    .message-bubble {
+        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+        border-radius: 18px;
+        padding: 15px 20px;
+        position: relative;
+        font-size: 1.1rem;
+        line-height: 1.5;
+    }
+
+    .message-bubble::before {
+        content: '';
+        position: absolute;
+        left: -10px;
+        top: 20px;
+        width: 0;
+        height: 0;
+        border-style: solid;
+        border-width: 10px 10px 10px 0;
+        border-color: transparent #e3f2fd transparent transparent;
+    }
+
+    .photo-grid {
+        margin-top: 10px;
+    }
+
+    .photo-grid img {
+        max-height: 400px;
+        width: 100%;
+        object-fit: cover;
+        transition: transform 0.3s ease;
+    }
+
+    .photo-grid img:hover {
+        transform: scale(1.02);
+    }
+
+    .post-text {
+        font-size: 1.1rem;
+        line-height: 1.6;
+        margin-bottom: 10px;
+    }
+
+    .timeline-footer {
+        margin-top: 15px;
+        padding-top: 10px;
+        border-top: 1px solid #f8f9fa;
+    }
+
+    .empty-timeline {
+        text-align: center;
+        padding: 80px 20px;
+    }
+
+    .bg-gradient-primary {
+        background: linear-gradient(135deg, #0d6efd 0%, #6610f2 100%);
+    }
+
+    .cursor-pointer {
+        cursor: pointer;
+    }
+
+    @@media (max-width: 768px) {
+        .timeline-item {
+            padding-left: 60px;
+        }
+        
+        .timeline::before {
+            left: 25px;
+        }
+        
+        .timeline-marker {
+            left: 10px;
+            width: 25px;
+            height: 25px;
+        }
+    }
+</style>

@@ -2,40 +2,39 @@
 // This file contains utility functions for the admin panel
 
 // Toast notification system
-function showToast(title, message, type = 'info') {
-    const toastContainer = document.getElementById('toastContainer');
-    if (!toastContainer) return;
+window.showToast = function(title, message, type) {
+    // Enhanced toast implementation
+    const toastContainer = document.getElementById('toast-container') || createToastContainer();
 
+    const toast = document.createElement('div');
     const toastId = 'toast-' + Date.now();
-    const typeClass = getToastTypeClass(type);
-    const icon = getToastIcon(type);
-
-    const toastHTML = `
-        <div id="${toastId}" class="toast" role="alert" data-bs-delay="5000">
-            <div class="toast-header">
-                <i class="${icon} me-2"></i>
-                <strong class="me-auto">${title}</strong>
-                <small class="text-muted">právě teď</small>
-                <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+    toast.id = toastId;
+    toast.className = `alert alert-${getBootstrapClass(type)} alert-dismissible fade show toast-item`;
+    toast.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-icon me-3">
+                <i class="fas ${getToastIcon(type)}"></i>
             </div>
-            <div class="toast-body ${typeClass}">
-                ${message}
+            <div class="flex-grow-1">
+                <div class="toast-title fw-bold">${title}</div>
+                <div class="toast-message">${message}</div>
             </div>
+            <button type="button" class="btn-close" onclick="removeToast('${toastId}')"></button>
         </div>
     `;
 
-    toastContainer.insertAdjacentHTML('beforeend', toastHTML);
-    
-    const toastElement = document.getElementById(toastId);
-    const toast = new bootstrap.Toast(toastElement);
-    toast.show();
+    toastContainer.appendChild(toast);
 
-    // Remove toast element after it's hidden
-    toastElement.addEventListener('hidden.bs.toast', () => {
-        toastElement.remove();
-    });
-}
+    // Auto remove after 5 seconds
+    setTimeout(() => {
+        removeToast(toastId);
+    }, 5000);
 
+    // Animate in
+    setTimeout(() => {
+        toast.classList.add('show');
+    }, 100);
+};
 function getToastTypeClass(type) {
     switch (type) {
         case 'success': return 'text-success';
