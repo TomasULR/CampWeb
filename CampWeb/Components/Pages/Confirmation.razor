@@ -3,116 +3,264 @@
 @using CampWeb.Services
 @inject ICampService CampService
 @inject NavigationManager Navigation
+@inject ILogger<Confirmation> Logger
 
 <PageTitle>Potvrzení registrace - Letní Tábory Plzeň</PageTitle>
 
 <div class="container my-5">
     <div class="row justify-content-center">
-        <div class="col-lg-8">
-            <div class="card confirmation-card">
-                <div class="card-body text-center">
-                    <div class="success-icon mb-4">
-                        <i class="fas fa-check-circle text-success"></i>
-                    </div>
-                    
-                    <h2 class="text-success mb-4">Registrace byla úspěšně dokončena!</h2>
-                    
-                    <div class="confirmation-details">
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <div class="info-card">
-                                    <h5><i class="fas fa-user me-2"></i>Přístupový kód</h5>
-                                    <code class="fs-4">@AccessCode</code>
-                                    <p class="small text-muted mt-2">Uschovejte si tento kód pro přístup k fotkám a informacím z tábora</p>
-                                </div>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <div class="info-card">
-                                    <h5><i class="fas fa-envelope me-2"></i>E-mail</h5>
-                                    <p>Na váš e-mail jsme odeslali potvrzení s podrobnostmi o registraci a pokyny k táboru.</p>
-                                </div>
-                            </div>
+        <div class="col-lg-10">
+            @if (isLoading)
+            {
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;"></div>
+                    <h3>Načítání potvrzení...</h3>
+                </div>
+            }
+            else if (registration == null)
+            {
+                <div class="alert alert-warning text-center py-5">
+                    <i class="fas fa-exclamation-triangle fa-3x mb-3"></i>
+                    <h3>Registrace nenalezena</h3>
+                    <p>Registrace s přístupovým kódem <strong>@AccessCode</strong> nebyla nalezena.</p>
+                    <a href="/" class="btn btn-primary">Zpět na hlavní stránku</a>
+                </div>
+            }
+            else
+            {
+                <div class="card confirmation-card">
+                    <div class="card-body text-center">
+                        <div class="success-icon mb-4">
+                            <i class="fas fa-check-circle text-success"></i>
                         </div>
-                    </div>
-
-                    @if (camp != null)
-                    {
-                        <div class="camp-summary mt-4">
-                            <h4>Shrnutí registrace</h4>
-                            <div class="card">
-                                <div class="card-body">
-                                    <div class="row text-start">
-                                        <div class="col-md-8">
-                                            <h5>@camp.Name</h5>
-                                            <p class="text-muted mb-2">
-                                                <i class="fas fa-map-marker-alt me-1"></i>@camp.Location
-                                            </p>
-                                            <p class="mb-2">
-                                                <i class="fas fa-calendar-alt me-1"></i>
-                                                @camp.StartDate.ToString("dd.MM.yyyy") - @camp.EndDate.ToString("dd.MM.yyyy")
-                                            </p>
-                                            <p class="mb-0">
-                                                <i class="fas fa-users me-1"></i>Věk: @camp.AgeGroup let
-                                            </p>
-                                        </div>
-                                        <div class="col-md-4 text-end">
-                                            <h4 class="text-primary">@camp.Price Kč</h4>
-                                            <span class="badge bg-success">Zaplaceno</span>
-                                        </div>
+                        
+                        <h2 class="text-success mb-4">Registrace byla úspěšně dokončena!</h2>
+                        
+                        <div class="confirmation-details">
+                            <div class="row">
+                                <div class="col-md-6 mb-4">
+                                    <div class="info-card">
+                                        <h5>
+                                            <i class="fas fa-key me-2"></i>
+                                            Váš přístupový kód
+                                        </h5>
+                                        <code class="fs-4">@registration.AccessCode</code>
+                                        <p class="small text-muted mt-2">
+                                            Uschovejte si tento kód pro přístup k fotkám a informacím z tábora
+                                        </p>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-4">
+                                    <div class="info-card">
+                                        <h5>
+                                            <i class="fas fa-envelope me-2"></i>
+                                            Potvrzovací e-mail
+                                        </h5>
+                                        <p>Na adresu <strong>@registration.ParentEmail</strong> jsme odeslali detailní informace o registraci.</p>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    }
 
-                    <div class="next-steps mt-5">
-                        <h4>Co dál?</h4>
-                        <div class="row">
-                            <div class="col-md-4 mb-3">
-                                <div class="step-card">
-                                    <i class="fas fa-envelope-open text-primary fs-2 mb-3"></i>
-                                    <h6>1. Zkontrolujte e-mail</h6>
-                                    <p class="small">Obdržíte podrobné informace o táboru a seznamu věcí k balení</p>
+                        @if (registration.Camp != null)
+                        {
+                            <div class="camp-summary mt-5">
+                                <h4 class="mb-4">
+                                    <i class="fas fa-clipboard-list me-2"></i>
+                                    Shrnutí registrace
+                                </h4>
+                                <div class="card">
+                                    <div class="card-body">
+                                        <div class="row text-start">
+                                            <div class="col-lg-8">
+                                                <div class="row">
+                                                    <div class="col-md-6">
+                                                        <h6 class="text-primary mb-3">Informace o táboru</h6>
+                                                        <p class="mb-2">
+                                                            <strong>Název:</strong> @registration.Camp.Name
+                                                        </p>
+                                                        <p class="mb-2">
+                                                            <i class="fas fa-map-marker-alt me-1 text-danger"></i>
+                                                            <strong>Lokace:</strong> @registration.Camp.Location
+                                                        </p>
+                                                        <p class="mb-2">
+                                                            <i class="fas fa-calendar-alt me-1 text-info"></i>
+                                                            <strong>Termín:</strong> @registration.Camp.StartDate.ToString("dd.MM.yyyy") - @registration.Camp.EndDate.ToString("dd.MM.yyyy")
+                                                        </p>
+                                                        <p class="mb-0">
+                                                            <i class="fas fa-users me-1 text-success"></i>
+                                                            <strong>Věkové rozmezí:</strong> @registration.Camp.AgeGroup
+                                                        </p>
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <h6 class="text-primary mb-3">Registrované dítě</h6>
+                                                        <p class="mb-2">
+                                                            <strong>Jméno:</strong> @registration.ChildFullName
+                                                        </p>
+                                                        <p class="mb-2">
+                                                            <strong>Věk:</strong> @registration.ChildAge let
+                                                        </p>
+                                                        <p class="mb-2">
+                                                            <strong>Datum narození:</strong> @registration.ChildBirthDate.ToString("dd.MM.yyyy")
+                                                        </p>
+                                                        <p class="mb-0">
+                                                            <strong>Status registrace:</strong>
+                                                            <span class="badge @GetStatusBadgeClass()">@GetStatusText()</span>
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-lg-4">
+                                                <div class="price-section text-center">
+                                                    <h6 class="text-muted mb-2">Celková cena</h6>
+                                                    <h3 class="text-primary mb-3">@registration.Camp.Price.ToString("N0") Kč</h3>
+                                                    <span class="badge @GetStatusBadgeClass() fs-6">
+                                                        @GetStatusText()
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="col-md-4 mb-3">
-                                <div class="step-card">
-                                    <i class="fas fa-images text-primary fs-2 mb-3"></i>
-                                    <h6>2. Sledujte fotky</h6>
-                                    <p class="small">Během tábora budete moci sledovat fotky a zprávy pomocí přístupového kódu</p>
+                        }
+
+                        <div class="next-steps mt-5">
+                            <h4 class="mb-4">
+                                <i class="fas fa-list-check me-2"></i>
+                                Co dál?
+                            </h4>
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <div class="step-card">
+                                        <i class="fas fa-envelope-open text-primary fs-2 mb-3"></i>
+                                        <h6>1. Zkontrolujte e-mail</h6>
+                                        <p class="small">Obdržíte podrobné informace o táboru, pokyny k platbě a seznam věcí k balení</p>
+                                    </div>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <div class="step-card">
+                                        <i class="fas fa-credit-card text-primary fs-2 mb-3"></i>
+                                        <h6>2. Platba</h6>
+                                        <p class="small">Postupujte podle pokynů v e-mailu pro dokončení platby za tábor</p>
+                                    </div>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <div class="step-card">
+                                        <i class="fas fa-images text-primary fs-2 mb-3"></i>
+                                        <h6>3. Sledujte fotky</h6>
+                                        <p class="small">Během tábora budete moci sledovat fotky a zprávy pomocí přístupového kódu</p>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="col-md-4 mb-3">
-                                <div class="step-card">
-                                    <i class="fas fa-phone text-primary fs-2 mb-3"></i>
-                                    <h6>3. Kontakt</h6>
-                                    <p class="small">V případě dotazů nás kontaktujte na +420 123 456 789</p>
+                        </div>
+
+                        <div class="action-buttons mt-5">
+                            <a href="/fotky/@registration.AccessCode" class="btn btn-primary btn-lg me-3">
+                                <i class="fas fa-images me-2"></i>
+                                Přístup k fotkám
+                            </a>
+                            <a href="/moje-registrace" class="btn btn-outline-primary btn-lg me-3">
+                                <i class="fas fa-list me-2"></i>
+                                Moje registrace
+                            </a>
+                            <a href="/" class="btn btn-outline-secondary btn-lg">
+                                <i class="fas fa-home me-2"></i>
+                                Hlavní stránka
+                            </a>
+                        </div>
+
+                        <div class="contact-info mt-5 pt-4 border-top">
+                            <h6 class="text-primary mb-3">
+                                <i class="fas fa-headset me-2"></i>
+                                Kontaktní informace
+                            </h6>
+                            <div class="row text-start">
+                                <div class="col-md-4">
+                                    <p class="mb-1">
+                                        <i class="fas fa-envelope me-2 text-primary"></i>
+                                        <strong>E-mail:</strong>
+                                    </p>
+                                    <p class="mb-3">info@letnitabory.cz</p>
+                                </div>
+                                <div class="col-md-4">
+                                    <p class="mb-1">
+                                        <i class="fas fa-phone me-2 text-primary"></i>
+                                        <strong>Telefon:</strong>
+                                    </p>
+                                    <p class="mb-3">+420 123 456 789</p>
+                                </div>
+                                <div class="col-md-4">
+                                    <p class="mb-1">
+                                        <i class="fas fa-clock me-2 text-primary"></i>
+                                        <strong>Úřední hodiny:</strong>
+                                    </p>
+                                    <p class="mb-3">Po-Pá: 9:00-17:00</p>
                                 </div>
                             </div>
                         </div>
                     </div>
-
-                    <div class="action-buttons mt-4">
-                        <a href="/fotky/@AccessCode" class="btn btn-primary me-3">
-                            <i class="fas fa-images me-2"></i>Přístup k fotkám
-                        </a>
-                        <a href="/" class="btn btn-outline-primary">
-                            <i class="fas fa-home me-2"></i>Zpět na hlavní stránku
-                        </a>
-                    </div>
-
-                    <div class="contact-info mt-4 pt-4 border-top">
-                        <h6>Kontaktní informace</h6>
-                        <p class="mb-1"><i class="fas fa-envelope me-2"></i>info@letnítabory.cz</p>
-                        <p class="mb-1"><i class="fas fa-phone me-2"></i>+420 123 456 789</p>
-                        <p class="mb-0"><i class="fas fa-clock me-2"></i>Po-Pá: 9:00-17:00</p>
-                    </div>
                 </div>
-            </div>
+            }
         </div>
     </div>
 </div>
 
+@code {
+    [Parameter] public string AccessCode { get; set; } = "";
+    
+    private Models.Registration? registration;
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrEmpty(AccessCode))
+        {
+            Navigation.NavigateTo("/");
+            return;
+        }
+
+        try
+        {
+            registration = await CampService.GetRegistrationByAccessCodeAsync(AccessCode);
+            Logger.LogInformation("Loaded registration confirmation for access code: {AccessCode}", AccessCode);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading registration confirmation for access code: {AccessCode}", AccessCode);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private string GetStatusBadgeClass()
+    {
+        return registration?.Status switch
+        {
+            RegistrationStatus.Pending => "bg-warning text-dark",
+            RegistrationStatus.Confirmed => "bg-info",
+            RegistrationStatus.Paid => "bg-success",
+            RegistrationStatus.Cancelled => "bg-danger",
+            _ => "bg-secondary"
+        };
+    }
+
+    private string GetStatusText()
+    {
+        return registration?.Status switch
+        {
+            RegistrationStatus.Pending => "Čeká na platbu",
+            RegistrationStatus.Confirmed => "Potvrzeno",
+            RegistrationStatus.Paid => "Zaplaceno",
+            RegistrationStatus.Cancelled => "Zrušeno",
+            _ => "Neznámý status"
+        };
+    }
+}
+
+<!-- Stejné styly jako předtím -->
 <style>
     .confirmation-card {
         box-shadow: 0 8px 25px rgba(0,0,0,0.1);
@@ -125,52 +273,68 @@
     }
 
     .info-card {
-        background: #f8f9fa;
-        padding: 20px;
-        border-radius: 10px;
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        padding: 1.5rem;
+        border-radius: 12px;
         height: 100%;
+        border: 1px solid #dee2e6;
     }
 
     .info-card h5 {
-        color: var(--primary-color);
+        color: var(--bs-primary);
         margin-bottom: 15px;
+        font-weight: 600;
     }
 
     .camp-summary .card {
-        background: rgba(44, 90, 160, 0.05);
-        border: 1px solid rgba(44, 90, 160, 0.1);
+        background: rgba(13, 110, 253, 0.05);
+        border: 1px solid rgba(13, 110, 253, 0.1);
+        border-radius: 12px;
     }
 
     .step-card {
         text-align: center;
-        padding: 20px;
+        padding: 1.5rem;
         height: 100%;
+        border: 1px solid #e9ecef;
+        border-radius: 12px;
+        transition: all 0.3s ease;
+    }
+
+    .step-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        border-color: var(--bs-primary);
     }
 
     .step-card h6 {
-        color: var(--primary-color);
-        margin-bottom: 10px;
+        color: var(--bs-primary);
+        margin-bottom: 15px;
+        font-weight: 600;
+    }
+
+    .price-section {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        padding: 1.5rem;
+        border-radius: 12px;
+        border: 1px solid #dee2e6;
     }
 
     .contact-info {
-        background: #f8f9fa;
-        padding: 20px;
-        border-radius: 10px;
-        margin-top: 20px;
-    }
-
-    .contact-info h6 {
-        color: var(--primary-color);
-        margin-bottom: 15px;
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-radius: 12px;
+        padding: 1.5rem;
+        border: 1px solid #dee2e6;
     }
 
     code {
-        background: rgba(44, 90, 160, 0.1);
-        color: var(--primary-color);
-        padding: 5px 10px;
-        border-radius: 5px;
+        background: rgba(13, 110, 253, 0.1);
+        color: var(--bs-primary);
+        padding: 8px 16px;
+        border-radius: 8px;
         font-weight: bold;
-        letter-spacing: 1px;
+        letter-spacing: 1.5px;
+        font-size: 1.2rem;
     }
 
     @@media (max-width: 768px) {
@@ -179,32 +343,16 @@
         }
         
         .confirmation-card {
-            margin: 20px 0;
+            margin: 10px;
         }
         
         .action-buttons .btn {
             width: 100%;
             margin-bottom: 10px;
         }
+        
+        .action-buttons .me-3 {
+            margin-right: 0 !important;
+        }
     }
 </style>
-
-@code {
-    [Parameter] public string AccessCode { get; set; } = "";
-    
-    private Camp? camp;
-
-    protected override async Task OnInitializedAsync()
-    {
-        if (string.IsNullOrEmpty(AccessCode))
-        {
-            Navigation.NavigateTo("/");
-            return;
-        }
-
-        // In a real app, you would look up the registration by access code
-        // For demo, we'll use the first camp
-        var camps = await CampService.GetAllCampsAsync();
-        camp = camps.FirstOrDefault();
-    }
-}

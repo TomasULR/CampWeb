@@ -203,6 +203,98 @@ window.initializeCampMap = function(lat, lng, name) {
         }
     });
 };
+// Initialize single camp detail map
+window.initializeCampDetailMap = function(mapElementId, latitude, longitude, campName, location) {
+    console.log('Initializing camp detail map for:', campName);
+
+    waitForLeaflet(() => {
+        try {
+            const mapContainer = document.getElementById(mapElementId);
+            if (!mapContainer) {
+                console.error('Map container not found:', mapElementId);
+                return;
+            }
+
+            // Remove existing map if it exists
+            if (window.campDetailMapInstance) {
+                window.campDetailMapInstance.remove();
+                window.campDetailMapInstance = null;
+            }
+
+            // Initialize map
+            window.campDetailMapInstance = L.map(mapElementId, {
+                center: [latitude, longitude],
+                zoom: 13,
+                scrollWheelZoom: true
+            });
+
+            // Add tile layer
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 18
+            }).addTo(window.campDetailMapInstance);
+
+            // Add marker for the camp
+            const marker = L.marker([latitude, longitude])
+                .addTo(window.campDetailMapInstance);
+
+            const popupContent = `
+                <div class="camp-detail-popup">
+                    <h6><strong>${campName}</strong></h6>
+                    <p><i class="fas fa-map-marker-alt text-danger"></i> ${location}</p>
+                </div>
+            `;
+
+            marker.bindPopup(popupContent).openPopup();
+            console.log('Camp detail map initialized successfully');
+        } catch (error) {
+            console.error('Error initializing camp detail map:', error);
+        }
+    });
+};
+
+// Pomocné funkce pro existující funkcionalitu
+function getMarkerIcon(type) {
+    let iconClass = 'fas fa-campground';
+    let color = '#28a745';
+
+    switch (type?.toLowerCase()) {
+        case 'sportovní':
+            iconClass = 'fas fa-running';
+            color = '#007bff';
+            break;
+        case 'přírodní':
+            iconClass = 'fas fa-tree';
+            color = '#28a745';
+            break;
+        case 'vzdělávací':
+            iconClass = 'fas fa-graduation-cap';
+            color = '#6f42c1';
+            break;
+        default:
+            iconClass = 'fas fa-campground';
+            color = '#28a745';
+    }
+
+    return L.divIcon({
+        html: `<div style="background-color: ${color}; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"><i class="${iconClass}" style="font-size: 14px;"></i></div>`,
+        iconSize: [30, 30],
+        iconAnchor: [15, 15],
+        className: 'custom-div-icon'
+    });
+}
+
+function getAvailabilityBadge(availableSpots) {
+    return availableSpots > 5 ? 'bg-success' : availableSpots > 0 ? 'bg-warning' : 'bg-secondary';
+}
+
+function getAvailabilityText(availableSpots) {
+    if (availableSpots === 0) return 'Obsazeno';
+    if (availableSpots === 1) return 'Poslední místo';
+    if (availableSpots <= 5) return `Posledních ${availableSpots} míst`;
+    return `${availableSpots} volných míst`;
+}
+    
 
 // Get marker icon based on camp type
 function getMarkerIcon(type) {

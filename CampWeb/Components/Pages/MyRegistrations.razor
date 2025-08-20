@@ -1,0 +1,416 @@
+﻿@page "/moje-registrace"
+@using CampWeb.Models
+@using CampWeb.Services
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.Authorization
+@inject ICampService CampService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager Navigation
+@inject ILogger<MyRegistrations> Logger
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+<PageTitle>Moje registrace - Letní Tábory Plzeň</PageTitle>
+
+<div class="container my-5">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1 class="display-6 text-primary">
+                        <i class="fas fa-clipboard-list me-3"></i>
+                        Moje registrace
+                    </h1>
+                    <p class="text-muted mb-0">Přehled všech registrací vašich dětí na tábory</p>
+                </div>
+                <a href="/tabory" class="btn btn-outline-primary">
+                    <i class="fas fa-plus me-2"></i>
+                    Registrovat na další tábor
+                </a>
+            </div>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <h4>Načítání registrací...</h4>
+                </div>
+            </div>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="row">
+            <div class="col-12">
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    @errorMessage
+                </div>
+            </div>
+        </div>
+    }
+    else if (!registrations.Any())
+    {
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="card border-0 shadow-sm text-center py-5">
+                    <div class="card-body">
+                        <div class="empty-state-icon mb-4">
+                            <i class="fas fa-clipboard-list text-muted" style="font-size: 4rem;"></i>
+                        </div>
+                        <h3 class="text-muted mb-3">Žádné registrace</h3>
+                        <p class="text-muted mb-4">
+                            Zatím jste neregistrovali žádné dítě na naše tábory. <br>
+                            Prohlédněte si naši nabídku a vyberte si tábor pro vaše dítě.
+                        </p>
+                        <a href="/tabory" class="btn btn-primary btn-lg">
+                            <i class="fas fa-search me-2"></i>
+                            Prohlédnout tábory
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="row">
+            @if (currentUser != null)
+            {
+                <div class="col-12 mb-4">
+                    <div class="card border-0 bg-light">
+                        <div class="card-body py-3">
+                            <div class="d-flex align-items-center">
+                                <div class="me-3">
+                                    <i class="fas fa-user-circle text-primary" style="font-size: 2.5rem;"></i>
+                                </div>
+                                <div>
+                                    <h5 class="mb-1">@currentUser.FullName</h5>
+                                    <p class="text-muted mb-0">
+                                        <i class="fas fa-envelope me-1"></i>
+                                        @currentUser.Email
+                                    </p>
+                                </div>
+                                <div class="ms-auto">
+                                    <span class="badge bg-primary fs-6">
+                                        @registrations.Count registrac@(registrations.Count == 1 ? "e" : registrations.Count < 5 ? "í" : "í")
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <div class="col-12">
+                <div class="row">
+                    @foreach (var registration in registrations.OrderByDescending(r => r.RegistrationDate))
+                    {
+                        <div class="col-lg-6 mb-4">
+                            <div class="card h-100 border-0 shadow-sm registration-card">
+                                <div class="card-header bg-white border-bottom-0 pb-0">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div>
+                                            <h5 class="card-title text-primary mb-1">
+                                                @registration.Camp.Name
+                                            </h5>
+                                            <p class="text-muted mb-0">
+                                                <i class="fas fa-map-marker-alt me-1"></i>
+                                                @registration.Camp.Location
+                                            </p>
+                                        </div>
+                                        <span class="badge @GetStatusBadgeClass(registration.Status) fs-6">
+                                            @GetStatusText(registration.Status)
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div class="card-body">
+                                    <!-- Informace o dítěti -->
+                                    <div class="child-info mb-3 p-3 bg-light rounded">
+                                        <div class="d-flex align-items-center mb-2">
+                                            <i class="fas fa-child text-primary me-2"></i>
+                                            <strong>@registration.ChildFullName</strong>
+                                            <span class="badge bg-secondary ms-2">@registration.ChildAge let</span>
+                                        </div>
+                                        <small class="text-muted">
+                                            <i class="fas fa-birthday-cake me-1"></i>
+                                            Narození: @registration.ChildBirthDate.ToString("dd.MM.yyyy")
+                                        </small>
+                                    </div>
+
+                                    <!-- Informace o táboru -->
+                                    <div class="camp-details">
+                                        <div class="row g-2 mb-3">
+                                            <div class="col-6">
+                                                <small class="text-muted d-block">
+                                                    <i class="fas fa-calendar-alt me-1"></i>
+                                                    Termín
+                                                </small>
+                                                <strong class="small">
+                                                    @registration.Camp.StartDate.ToString("dd.MM") - @registration.Camp.EndDate.ToString("dd.MM.yyyy")
+                                                </strong>
+                                            </div>
+                                            <div class="col-6">
+                                                <small class="text-muted d-block">
+                                                    <i class="fas fa-tag me-1"></i>
+                                                    Cena
+                                                </small>
+                                                <strong class="small">
+                                                    @registration.Camp.Price.ToString("N0") Kč
+                                                </strong>
+                                            </div>
+                                        </div>
+
+                                        <div class="mb-3">
+                                            <small class="text-muted d-block">
+                                                <i class="fas fa-key me-1"></i>
+                                                Přístupový kód
+                                            </small>
+                                            <code class="bg-primary text-white px-2 py-1 rounded">
+                                                @registration.AccessCode
+                                            </code>
+                                        </div>
+
+                                        @if (registration.HasMedicalIssues)
+                                        {
+                                            <div class="mb-3">
+                                                <div class="alert alert-warning py-2 mb-0">
+                                                    <small>
+                                                        <i class="fas fa-heartbeat me-1"></i>
+                                                        <strong>Zdravotní informace:</strong> Vyplněno
+                                                    </small>
+                                                </div>
+                                            </div>
+                                        }
+
+                                        @if (!string.IsNullOrEmpty(registration.SpecialRequirements))
+                                        {
+                                            <div class="mb-3">
+                                                <small class="text-muted d-block">
+                                                    <i class="fas fa-clipboard me-1"></i>
+                                                    Speciální požadavky
+                                                </small>
+                                                <small class="text-dark">@registration.SpecialRequirements</small>
+                                            </div>
+                                        }
+
+                                        <div class="registration-date">
+                                            <small class="text-muted">
+                                                <i class="fas fa-clock me-1"></i>
+                                                Registrováno: @registration.RegistrationDate.ToString("dd.MM.yyyy HH:mm")
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="card-footer bg-white border-top-0 pt-0">
+                                    <div class="d-flex gap-2">
+                                        <a href="/tabor/@registration.CampId" class="btn btn-outline-primary btn-sm flex-fill">
+                                            <i class="fas fa-eye me-1"></i>
+                                            Detail tábora
+                                        </a>
+                                        <a href="/potvrzeni/@registration.AccessCode" class="btn btn-primary btn-sm flex-fill">
+                                            <i class="fas fa-receipt me-1"></i>
+                                            Potvrzení
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Statistiky -->
+            @if (registrations.Any())
+            {
+                <div class="col-12 mt-4">
+                    <div class="card border-0 bg-primary text-white">
+                        <div class="card-body">
+                            <h6 class="card-title">
+                                <i class="fas fa-chart-pie me-2"></i>
+                                Statistiky registrací
+                            </h6>
+                            <div class="row text-center">
+                                <div class="col-md-3">
+                                    <div class="stat-item">
+                                        <div class="stat-number">@registrations.Count</div>
+                                        <div class="stat-label">Celkem registrací</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="stat-item">
+                                        <div class="stat-number">@registrations.Count(r => r.Status == RegistrationStatus.Confirmed || r.Status == RegistrationStatus.Paid)</div>
+                                        <div class="stat-label">Potvrzených</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="stat-item">
+                                        <div class="stat-number">@registrations.Sum(r => r.Camp.Price).ToString("N0") Kč</div>
+                                        <div class="stat-label">Celková hodnota</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="stat-item">
+                                        <div class="stat-number">@registrations.Select(r => r.ChildFullName).Distinct().Count()</div>
+                                        <div class="stat-label">Různých dětí</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<Models.Registration> registrations = new();
+    private ApplicationUser? currentUser;
+    private bool isLoading = true;
+    private string errorMessage = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await LoadCurrentUser();
+            if (currentUser != null)
+            {
+                await LoadUserRegistrations();
+            }
+            else
+            {
+                errorMessage = "Nejste přihlášeni.";
+                Navigation.NavigateTo("/prihlaseni?returnUrl=" + Uri.EscapeDataString("/moje-registrace"));
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading user registrations page");
+            errorMessage = "Došlo k chybě při načítání registrací.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadCurrentUser()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated == true)
+        {
+            var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!string.IsNullOrEmpty(userId))
+            {
+                currentUser = await UserManager.FindByIdAsync(userId);
+                Logger.LogInformation("Current user loaded: {Email}", currentUser?.Email);
+            }
+        }
+    }
+
+    private async Task LoadUserRegistrations()
+    {
+        if (currentUser == null) return;
+
+        try
+        {
+            registrations = await CampService.GetUserRegistrationsAsync(currentUser.Id);
+            Logger.LogInformation("Loaded {Count} registrations for user {UserId}", registrations.Count, currentUser.Id);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading registrations for user {UserId}", currentUser.Id);
+            errorMessage = "Došlo k chybě při načítání vašich registrací.";
+        }
+    }
+
+    private static string GetStatusBadgeClass(RegistrationStatus status)
+    {
+        return status switch
+        {
+            RegistrationStatus.Pending => "bg-warning text-dark",
+            RegistrationStatus.Confirmed => "bg-info",
+            RegistrationStatus.Paid => "bg-success",
+            RegistrationStatus.Cancelled => "bg-secondary",
+            _ => "bg-secondary"
+        };
+    }
+
+    private static string GetStatusText(RegistrationStatus status)
+    {
+        return status switch
+        {
+            RegistrationStatus.Pending => "Čeká na potvrzení",
+            RegistrationStatus.Confirmed => "Potvrzeno",
+            RegistrationStatus.Paid => "Zaplaceno",
+            RegistrationStatus.Cancelled => "Zrušeno",
+            _ => "Neznámý stav"
+        };
+    }
+}
+
+<style>
+    .registration-card {
+        transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    }
+
+    .registration-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15) !important;
+    }
+
+    .child-info {
+        border-left: 4px solid var(--bs-primary);
+    }
+
+    .stat-item {
+        padding: 0.5rem;
+    }
+
+    .stat-number {
+        font-size: 1.5rem;
+        font-weight: bold;
+        margin-bottom: 0.25rem;
+    }
+
+    .stat-label {
+        font-size: 0.875rem;
+        opacity: 0.9;
+    }
+
+    code {
+        font-size: 0.875rem;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+    }
+
+    .empty-state-icon {
+        opacity: 0.3;
+    }
+
+    @@media (max-width: 768px) {
+        .display-6 {
+            font-size: 2rem;
+        }
+        
+        .registration-card {
+            margin-bottom: 1rem;
+        }
+        
+        .stat-item {
+            margin-bottom: 1rem;
+        }
+    }
+</style>

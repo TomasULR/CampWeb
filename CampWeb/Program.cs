@@ -5,6 +5,7 @@ using CampWeb.Components;
 using CampWeb.Data;
 using CampWeb.Models;
 using CampWeb.Services;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Npgsql;
 
@@ -63,23 +64,23 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 .AddEntityFrameworkStores<ApplicationDbContext>()
 .AddDefaultTokenProviders();
 
-// BEST PRACTICE: Configure application cookies
 builder.Services.ConfigureApplicationCookie(options =>
 {
     options.Cookie.HttpOnly = true;
-    options.ExpireTimeSpan = TimeSpan.FromMinutes(60);
-    options.LoginPath = "/prihlaseni";  // Keep your Czech path
-    options.LogoutPath = "/odhlaseni";
+    options.ExpireTimeSpan = TimeSpan.FromDays(365);
+    options.LoginPath = "/prihlaseni";
+    options.LogoutPath = "/logout";
     options.AccessDeniedPath = "/pristup-odepren";
     options.SlidingExpiration = true;
-
     // BEST PRACTICE: Secure cookie settings for production
     options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
     options.Cookie.SameSite = SameSiteMode.Lax;
-
     // Additional security settings
     options.Cookie.Name = "CampWeb.Auth";
     options.ReturnUrlParameter = "returnUrl";
+    
+    // Pro RememberMe funkci
+    options.Cookie.IsEssential = true;
 });
 
 // BEST PRACTICE: Proper service registration with interfaces
@@ -126,9 +127,14 @@ app.MapRazorComponents<App>()
 // Add custom route mappings
 app.MapGet("/pristup-odepren", () => Results.Redirect("/prihlaseni"));
 
+
 // Map controllers BEFORE database seeding
 app.MapControllers();
-
+app.MapPost("/Account/logout", async (HttpContext context, SignInManager<ApplicationUser> signInManager) =>
+{
+    await signInManager.SignOutAsync();
+    return Results.LocalRedirect("/");
+});
 // BEST PRACTICE: Runtime Identity seeding using UserManager/RoleManager
 using (var scope = app.Services.CreateScope())
 {

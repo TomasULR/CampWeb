@@ -1,0 +1,254 @@
+﻿@page "/registrace-uspesna/{accessCode}"
+@using CampWeb.Models
+@using CampWeb.Services
+@inject ICampService CampService
+@inject NavigationManager Navigation
+@inject ILogger<RegistrationSuccess> Logger
+
+<PageTitle>Registrace úspěšná - Letní Tábory Plzeň</PageTitle>
+
+<div class="container my-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            @if (isLoading)
+            {
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;"></div>
+                    <h3>Načítání informací...</h3>
+                </div>
+            }
+            else
+            {
+                <div class="card success-card">
+                    <div class="card-body text-center py-5">
+                        <div class="success-icon mb-4">
+                            <i class="fas fa-check-circle text-success"></i>
+                        </div>
+                        
+                        <h1 class="text-success mb-4">Registrace úspěšná!</h1>
+                        
+                        <div class="alert alert-info mb-4">
+                            <h5 class="alert-heading">
+                                <i class="fas fa-user-plus me-2"></i>
+                                Váš účet byl vytvořen
+                            </h5>
+                            <p class="mb-3">
+                                Vytvořili jsme vám nový rodičovský účet s e-mailem <strong>@Email</strong>
+                            </p>
+                            <hr>
+                            <p class="mb-0">
+                                Dítě bylo úspěšně registrováno na tábor. Pro přihlášení a správu registrací použijte tento e-mail a heslo, které jste si zvolili.
+                            </p>
+                        </div>
+
+                        <div class="row mb-4">
+                            <div class="col-md-6 mb-3">
+                                <div class="info-card">
+                                    <h5>
+                                        <i class="fas fa-key me-2"></i>
+                                        Přístupový kód
+                                    </h5>
+                                    <code class="fs-4">@AccessCode</code>
+                                    <p class="small text-muted mt-2">
+                                        Uschovejte si tento kód pro přístup k fotkám z tábora
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <div class="info-card">
+                                    <h5>
+                                        <i class="fas fa-envelope me-2"></i>
+                                        Potvrzovací e-mail
+                                    </h5>
+                                    <p>Na váš e-mail jsme odeslali všechny potřebné informace o registraci a přístupové údaje.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="next-steps mb-5">
+                            <h4 class="mb-4">Co dál?</h4>
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <div class="step-card">
+                                        <i class="fas fa-sign-in-alt text-primary fs-2 mb-3"></i>
+                                        <h6>1. Přihlaste se</h6>
+                                        <p class="small">Přihlaste se pomocí svého e-mailu a hesla pro správu registrací</p>
+                                    </div>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <div class="step-card">
+                                        <i class="fas fa-credit-card text-primary fs-2 mb-3"></i>
+                                        <h6>2. Dokončete platbu</h6>
+                                        <p class="small">Postupujte podle pokynů v e-mailu pro dokončení platby</p>
+                                    </div>
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <div class="step-card">
+                                        <i class="fas fa-images text-primary fs-2 mb-3"></i>
+                                        <h6>3. Sledujte fotky</h6>
+                                        <p class="small">Během tábora sledujte fotky pomocí přístupového kódu</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="action-buttons">
+                            <a href="/prihlaseni?returnUrl=@Uri.EscapeDataString($"/fotky/{AccessCode}")" class="btn btn-success btn-lg me-3">
+                                <i class="fas fa-sign-in-alt me-2"></i>
+                                Přihlásit se nyní
+                            </a>
+                            <a href="/prihlaseni" class="btn btn-primary btn-lg me-3">
+                                <i class="fas fa-user me-2"></i>
+                                Přihlásit se
+                            </a>
+                            <a href="/" class="btn btn-outline-primary btn-lg">
+                                <i class="fas fa-home me-2"></i>
+                                Hlavní stránka
+                            </a>
+                        </div>
+
+                        <div class="contact-info mt-5 pt-4 border-top">
+                            <h6 class="text-primary mb-3">
+                                <i class="fas fa-headset me-2"></i>
+                                Kontaktní informace
+                            </h6>
+                            <div class="row text-start">
+                                <div class="col-md-4">
+                                    <p class="mb-1">
+                                        <i class="fas fa-envelope me-2 text-primary"></i>
+                                        <strong>E-mail:</strong>
+                                    </p>
+                                    <p class="mb-3">info@letnitabory.cz</p>
+                                </div>
+                                <div class="col-md-4">
+                                    <p class="mb-1">
+                                        <i class="fas fa-phone me-2 text-primary"></i>
+                                        <strong>Telefon:</strong>
+                                    </p>
+                                    <p class="mb-3">+420 123 456 789</p>
+                                </div>
+                                <div class="col-md-4">
+                                    <p class="mb-1">
+                                        <i class="fas fa-clock me-2 text-primary"></i>
+                                        <strong>Úřední hodiny:</strong>
+                                    </p>
+                                    <p class="mb-3">Po-Pá: 9:00-17:00</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string AccessCode { get; set; } = "";
+    [SupplyParameterFromQuery] public string? Email { get; set; }
+    
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrEmpty(AccessCode))
+        {
+            Navigation.NavigateTo("/");
+            return;
+        }
+
+        try
+        {
+            // Simulace loading
+            await Task.Delay(500);
+            Logger.LogInformation("Registration success page loaded for access code: {AccessCode}", AccessCode);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading registration success page");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}
+
+<style>
+    .success-card {
+        box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        border: none;
+        border-radius: 15px;
+    }
+
+    .success-icon i {
+        font-size: 5rem;
+    }
+
+    .info-card {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        padding: 1.5rem;
+        border-radius: 12px;
+        height: 100%;
+        border: 1px solid #dee2e6;
+    }
+
+    .info-card h5 {
+        color: var(--bs-primary);
+        margin-bottom: 15px;
+        font-weight: 600;
+    }
+
+    .step-card {
+        text-align: center;
+        padding: 1.5rem;
+        height: 100%;
+        border: 1px solid #e9ecef;
+        border-radius: 12px;
+        transition: all 0.3s ease;
+    }
+
+    .step-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        border-color: var(--bs-primary);
+    }
+
+    .step-card h6 {
+        color: var(--bs-primary);
+        margin-bottom: 15px;
+        font-weight: 600;
+    }
+
+    code {
+        background: rgba(13, 110, 253, 0.1);
+        color: var(--bs-primary);
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-weight: bold;
+        letter-spacing: 1.5px;
+        font-size: 1.2rem;
+    }
+
+    .contact-info {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-radius: 12px;
+        padding: 1.5rem;
+        border: 1px solid #dee2e6;
+    }
+
+    @@media (max-width: 768px) {
+        .success-icon i {
+            font-size: 4rem;
+        }
+        
+        .action-buttons .btn {
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        
+        .action-buttons .me-3 {
+            margin-right: 0 !important;
+        }
+    }
+</style>

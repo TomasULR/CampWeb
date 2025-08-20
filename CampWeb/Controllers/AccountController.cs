@@ -78,13 +78,5 @@ public class AccountController : Controller
         return LocalRedirect(
             $"/prihlaseni?error={Uri.EscapeDataString(errorMessage)}&returnUrl={Uri.EscapeDataString(returnUrl)}");
     }
-
-    [HttpPost("logout")]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Logout()
-    {
-        await _signInManager.SignOutAsync();
-        _logger.LogInformation("User logged out");
-        return LocalRedirect("/");
-    }
+    
 }

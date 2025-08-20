@@ -1,10 +1,9 @@
 ﻿@page "/registrace"
-@page "/rgister"
+@page "/register"
 @using System.ComponentModel.DataAnnotations
 @using Microsoft.AspNetCore.Identity
 @using CampWeb.Models
 @inject UserManager<ApplicationUser> UserManager
-@inject SignInManager<ApplicationUser> SignInManager
 @inject NavigationManager Navigation
 @inject ILogger<Register> Logger
 @rendermode InteractiveServer
@@ -32,7 +31,24 @@
                 @if (registrationSuccess)
                 {
                     <div class="alert alert-success">
-                        <strong>Registrace úspěšná!</strong> Přesměrováváme vás na hlavní stránku...
+                        <h4 class="alert-heading">
+                            <i class="fas fa-check-circle me-2"></i>
+                            Registrace úspěšná!
+                        </h4>
+                        <p>
+                            Váš účet byl úspěšně vytvořen. Nyní se můžete přihlásit a registrovat se na tábory.
+                        </p>
+                        <hr>
+                        <div class="d-flex gap-2">
+                            <a href="/prihlaseni" class="btn btn-success">
+                                <i class="fas fa-sign-in-alt me-2"></i>
+                                Přihlásit se
+                            </a>
+                            <a href="/" class="btn btn-outline-primary">
+                                <i class="fas fa-home me-2"></i>
+                                Hlavní stránka
+                            </a>
+                        </div>
                     </div>
                 }
                 else
@@ -86,26 +102,32 @@
                     </EditForm>
                 }
 
-                <hr class="my-4" />
-                <p class="text-center">
-                    Už máte účet? <a href="/prihlaseni">Přihlaste se zde</a>
-                </p>
+                @if (!registrationSuccess)
+                {
+                    <hr class="my-4" />
+                    <p class="text-center">
+                        Už máte účet? <a href="/prihlaseni">Přihlaste se zde</a>
+                    </p>
+                }
             </div>
         </div>
 
-        <div class="mt-4">
-            <div class="card">
-                <div class="card-body">
-                    <h5>Výhody registrace:</h5>
-                    <ul class="list-unstyled">
-                        <li>✓ Při příští registraci na tábor nemusíte vyplňovat základní údaje</li>
-                        <li>✓ Dostanete e-mail o nových táborech a aktuálních nabídkách</li>
-                        <li>✓ Přehled všech vašich registrací na jednom místě</li>
-                        <li>✓ Snadný přístup k fotkám ze všech táborů vašich dětí</li>
-                    </ul>
+        @if (!registrationSuccess)
+        {
+            <div class="mt-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5>Výhody registrace:</h5>
+                        <ul class="list-unstyled">
+                            <li>✓ Při příští registraci na tábor nemusíte vyplňovat základní údaje</li>
+                            <li>✓ Dostanete e-mail o nových táborech a aktuálních nabídkách</li>
+                            <li>✓ Přehled všech vašich registrací na jednom místě</li>
+                            <li>✓ Snadný přístup k fotkám ze všech táborů vašich dětí</li>
+                        </ul>
+                    </div>
                 </div>
             </div>
-        </div>
+        }
     </div>
 </div>
 
@@ -143,16 +165,14 @@
                 // Add to Parent role
                 await UserManager.AddToRoleAsync(user, "Parent");
                 
-                // Sign in the user
-                await SignInManager.SignInAsync(user, isPersistent: false);
+                Logger.LogInformation("User account created successfully: {Email}", Input.Email);
                 
-                // Show success message
+                // ODSTRANĚNO AUTOMATICKÉ PŘIHLÁŠENÍ - způsobovalo chybu
+                // await SignInManager.SignInAsync(user, isPersistent: false);
+                
+                // Show success message instead
                 registrationSuccess = true;
                 StateHasChanged();
-                
-                // Wait a moment to show success message, then redirect
-                await Task.Delay(1500);
-                Navigation.NavigateTo("/", forceLoad: true);
                 return;
             }
             else

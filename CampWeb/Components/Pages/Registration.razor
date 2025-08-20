@@ -1,0 +1,597 @@
+﻿@page "/registrace/{campId:int}"
+@using CampWeb.Models
+@using CampWeb.Services
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using System.ComponentModel.DataAnnotations
+@inject NavigationManager Navigation
+@inject ICampService CampService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@inject ILogger<Registration> Logger
+@* ODSTRANĚNO: @attribute [Authorize] *@
+@rendermode InteractiveServer
+
+<PageTitle>Registrace na tábor - @(camp?.Name ?? "Načítání...")</PageTitle>
+
+<div class="container my-5">
+    @if (isLoading)
+    {
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <h3>Načítání registrace...</h3>
+                </div>
+            </div>
+        </div>
+    }
+    else if (camp == null)
+    {
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="alert alert-warning text-center">
+                    <h3>Tábor nenalezen</h3>
+                    <p>Požadovaný tábor nebyl nalezen.</p>
+                    <a href="/tabory" class="btn btn-primary">Zpět na tábory</a>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="row">
+            <div class="col-lg-8">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-primary text-white">
+                        <h3 class="mb-0">
+                            <i class="fas fa-pen me-2"></i>
+                            Registrace na tábor
+                        </h3>
+                        <small class="text-white-50">
+                            @if (currentUser == null)
+                            {
+                                <text>Vytvoříme vám účet pro snadnou správu registrací</text>
+                            }
+                            else
+                            {
+                                <text>Přihlášeni jako @currentUser.FullName</text>
+                            }
+                        </small>
+                    </div>
+                    <div class="card-body">
+                        @if (!string.IsNullOrEmpty(errorMessage))
+                        {
+                            <div class="alert alert-danger">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                @errorMessage
+                            </div>
+                        }
+
+                        @if (!string.IsNullOrEmpty(successMessage))
+                        {
+                            <div class="alert alert-success">
+                                <i class="fas fa-check-circle me-2"></i>
+                                @successMessage
+                            </div>
+                        }
+
+                        <EditForm Model="registrationForm" OnValidSubmit="SubmitRegistration" FormName="CampRegistration">
+                            <DataAnnotationsValidator />
+                            
+                            <!-- Informace o rodičovi -->
+                            <div class="section-header mb-4">
+                                <h5 class="text-primary">
+                                    <i class="fas fa-user me-2"></i>
+                                    Kontaktní údaje rodiče/zákonného zástupce
+                                </h5>
+                                @if (currentUser == null)
+                                {
+                                    <small class="text-muted">Vytvoříme vám účet pro snadnou správu registrací</small>
+                                }
+                                else
+                                {
+                                    <small class="text-success">✓ Tyto údaje jsou načteny z vašeho účtu</small>
+                                }
+                            </div>
+                            
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label for="parentFirstName" class="form-label">Křestní jméno *</label>
+                                    <InputText @bind-Value="registrationForm.ParentFirstName" class="form-control" id="parentFirstName" 
+                                               readonly="@(currentUser != null)" />
+                                    <ValidationMessage For="() => registrationForm.ParentFirstName" class="text-danger" />
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="parentLastName" class="form-label">Příjmení *</label>
+                                    <InputText @bind-Value="registrationForm.ParentLastName" class="form-control" id="parentLastName" 
+                                               readonly="@(currentUser != null)" />
+                                    <ValidationMessage For="() => registrationForm.ParentLastName" class="text-danger" />
+                                </div>
+                            </div>
+                            
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label for="parentEmail" class="form-label">E-mail *</label>
+                                    <InputText @bind-Value="registrationForm.ParentEmail" class="form-control" id="parentEmail" type="email" 
+                                               readonly="@(currentUser != null)" />
+                                    <ValidationMessage For="() => registrationForm.ParentEmail" class="text-danger" />
+                                    @if (currentUser == null)
+                                    {
+                                        <small class="form-text text-muted">Na tento e-mail vám zašleme přístupové údaje</small>
+                                    }
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="parentPhone" class="form-label">Telefon *</label>
+                                    <InputText @bind-Value="registrationForm.ParentPhone" class="form-control" id="parentPhone" 
+                                               placeholder="+420 xxx xxx xxx" />
+                                    <ValidationMessage For="() => registrationForm.ParentPhone" class="text-danger" />
+                                </div>
+                            </div>
+
+                            @if (currentUser == null)
+                            {
+                                <div class="mb-4">
+                                    <label for="parentPassword" class="form-label">Heslo *</label>
+                                    <InputText @bind-Value="registrationForm.ParentPassword" class="form-control" id="parentPassword" type="password" />
+                                    <ValidationMessage For="() => registrationForm.ParentPassword" class="text-danger" />
+                                    <small class="form-text text-muted">Heslo musí mít alespoň 6 znaků</small>
+                                </div>
+                            }
+
+                            <hr class="my-4">
+
+                            <!-- Informace o dítěti -->
+                            <div class="section-header mb-4">
+                                <h5 class="text-primary">
+                                    <i class="fas fa-child me-2"></i>
+                                    Údaje o dítěti
+                                </h5>
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label for="childName" class="form-label">Jméno *</label>
+                                    <InputText @bind-Value="registrationForm.ChildName" class="form-control" id="childName" />
+                                    <ValidationMessage For="() => registrationForm.ChildName" class="text-danger" />
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="childSurname" class="form-label">Příjmení *</label>
+                                    <InputText @bind-Value="registrationForm.ChildSurname" class="form-control" id="childSurname" />
+                                    <ValidationMessage For="() => registrationForm.ChildSurname" class="text-danger" />
+                                </div>
+                            </div>
+
+                            <div class="mb-4">
+                                <label for="childBirthDate" class="form-label">Datum narození *</label>
+                                <InputDate @bind-Value="registrationForm.ChildBirthDate" class="form-control" id="childBirthDate" />
+                                <ValidationMessage For="() => registrationForm.ChildBirthDate" class="text-danger" />
+                                @if (registrationForm.ChildBirthDate != default)
+                                {
+                                    <small class="form-text text-muted">
+                                        Věk dítěte: @GetChildAge() let
+                                    </small>
+                                }
+                            </div>
+
+                            <hr class="my-4">
+
+                            <!-- Zdravotní informace -->
+                            <div class="section-header mb-4">
+                                <h5 class="text-primary">
+                                    <i class="fas fa-heartbeat me-2"></i>
+                                    Zdravotní informace
+                                </h5>
+                            </div>
+
+                            <div class="mb-3">
+                                <div class="form-check">
+                                    <InputCheckbox @bind-Value="registrationForm.HasMedicalIssues" class="form-check-input" id="hasMedicalIssues" />
+                                    <label class="form-check-label" for="hasMedicalIssues">
+                                        Dítě má zdravotní omezení nebo užívá léky
+                                    </label>
+                                </div>
+                            </div>
+
+                            @if (registrationForm.HasMedicalIssues)
+                            {
+                                <div class="mb-4">
+                                    <label for="medicalIssues" class="form-label">Zdravotní informace *</label>
+                                    <InputTextArea @bind-Value="registrationForm.MedicalIssuesDescription" class="form-control" id="medicalIssues" rows="3" 
+                                                   placeholder="Popište zdravotní omezení, alergie, léky, které dítě užívá..." />
+                                    <ValidationMessage For="() => registrationForm.MedicalIssuesDescription" class="text-danger" />
+                                </div>
+                            }
+
+                            <div class="mb-4">
+                                <label for="specialRequirements" class="form-label">Zvláštní požadavky (volitelné)</label>
+                                <InputTextArea @bind-Value="registrationForm.SpecialRequirements" class="form-control" id="specialRequirements" rows="3" 
+                                               placeholder="Stravovací omezení, speciální potřeby, poznámky..." />
+                            </div>
+
+                            <hr class="my-4">
+
+                            <!-- Souhlas -->
+                            <div class="mb-4">
+                                <div class="form-check">
+                                    <InputCheckbox @bind-Value="registrationForm.AgreeToTerms" class="form-check-input" id="agreeToTerms" />
+                                    <label class="form-check-label" for="agreeToTerms">
+                                        Souhlasím s <a href="/podminky" target="_blank">podmínkami účasti</a> a 
+                                        <a href="/gdpr" target="_blank">zpracováním osobních údajů</a> *
+                                    </label>
+                                </div>
+                                <ValidationMessage For="() => registrationForm.AgreeToTerms" class="text-danger" />
+                            </div>
+
+                            <div class="d-flex gap-3">
+                                <button type="submit" class="btn btn-success btn-lg" disabled="@isSubmitting">
+                                    @if (isSubmitting)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                        <text>Zpracování...</text>
+                                    }
+                                    else
+                                    {
+                                        <i class="fas fa-check me-2"></i>
+                                        @if (currentUser == null)
+                                        {
+                                            <text>Vytvořit účet a registrovat</text>
+                                        }
+                                        else
+                                        {
+                                            <text>Odeslat registraci</text>
+                                        }
+                                    }
+                                </button>
+                                
+                                <a href="/tabor/@CampId" class="btn btn-outline-secondary btn-lg">
+                                    <i class="fas fa-arrow-left me-2"></i>
+                                    Zpět na detail
+                                </a>
+                            </div>
+                        </EditForm>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <!-- Camp Summary -->
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-campground me-2"></i>
+                            Shrnutí objednávky
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <h6 class="camp-name">@camp.Name</h6>
+                        <p class="text-muted mb-2">
+                            <i class="fas fa-map-marker-alt me-1"></i>
+                            @camp.Location
+                        </p>
+                        <p class="mb-2">
+                            <i class="fas fa-calendar-alt me-1"></i>
+                            @camp.StartDate.ToString("dd.MM.yyyy") - @camp.EndDate.ToString("dd.MM.yyyy")
+                        </p>
+                        <p class="mb-3">
+                            <i class="fas fa-users me-1"></i>
+                            Věk: @camp.AgeGroup
+                        </p>
+                        
+                        <hr>
+                        
+                        <div class="price-summary">
+                            <div class="d-flex justify-content-between mb-2">
+                                <span>Cena za týden:</span>
+                                <strong class="text-primary">@camp.Price.ToString("N0") Kč</strong>
+                            </div>
+                        </div>
+                        
+                        <div class="alert alert-info mt-3">
+                            <small>
+                                <i class="fas fa-info-circle me-1"></i>
+                                Po registraci obdržíte e-mail s pokyny k platbě a přístupovým kódem.
+                            </small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Available Spots -->
+                <div class="card shadow-sm">
+                    <div class="card-body text-center">
+                        <h6 class="text-muted mb-2">Dostupnost</h6>
+                        <div class="availability-indicator">
+                            <span class="badge @GetAvailabilityBadgeClass() fs-6">
+                                @GetAvailabilityText()
+                            </span>
+                        </div>
+                        @if (camp.AvailableSpots <= 5 && camp.AvailableSpots > 0)
+                        {
+                            <small class="text-warning mt-2 d-block">
+                                <i class="fas fa-exclamation-triangle me-1"></i>
+                                Zůstává jen několik míst!
+                            </small>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int CampId { get; set; }
+
+    private Camp? camp;
+    private ApplicationUser? currentUser;
+    private bool isLoading = true;
+    private bool isSubmitting = false;
+    private string errorMessage = "";
+    private string successMessage = "";
+
+    private RegistrationFormModel registrationForm = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCurrentUser();
+        await LoadCampData();
+        InitializeForm();
+    }
+
+    private async Task LoadCurrentUser()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            if (authState.User.Identity?.IsAuthenticated == true)
+            {
+                var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (!string.IsNullOrEmpty(userId))
+                {
+                    currentUser = await UserManager.FindByIdAsync(userId);
+                    Logger.LogInformation("Current user loaded: {Email}", currentUser?.Email);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading current user");
+        }
+    }
+
+    private async Task LoadCampData()
+    {
+        try
+        {
+            camp = await CampService.GetCampByIdAsync(CampId);
+            if (camp == null)
+            {
+                errorMessage = "Tábor nebyl nalezen.";
+                Logger.LogWarning("Camp with ID {CampId} not found", CampId);
+            }
+            else if (camp.AvailableSpots <= 0)
+            {
+                errorMessage = "Tábor je již obsazen.";
+                Logger.LogInformation("Camp {CampId} is fully booked", CampId);
+            }
+            else
+            {
+                Logger.LogInformation("Camp {CampId} loaded successfully, {AvailableSpots} spots available", CampId, camp.AvailableSpots);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading camp data for registration");
+            errorMessage = "Chyba při načítání údajů o táboru.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void InitializeForm()
+    {
+        if (currentUser != null)
+        {
+            registrationForm.ParentFirstName = currentUser.FirstName;
+            registrationForm.ParentLastName = currentUser.LastName;
+            registrationForm.ParentEmail = currentUser.Email ?? "";
+            registrationForm.ParentPhone = currentUser.PhoneNumber ?? "";
+            Logger.LogInformation("Form initialized for existing user: {Email}", currentUser.Email);
+            registrationForm.ParentPassword = "DummyPassword123"; // Nebude se použít
+        }
+        else
+        {
+            Logger.LogInformation("Form initialized for new user");
+        }
+    }
+
+    private async Task SubmitRegistration()
+    {
+        if (camp == null)
+        {
+            errorMessage = "Chyba při zpracování registrace.";
+            return;
+        }
+
+        isSubmitting = true;
+        errorMessage = "";
+        successMessage = "";
+        Logger.LogInformation("Starting registration submission for camp {CampId}", CampId);
+
+        try
+        {
+            ApplicationUser user;
+            
+            if (currentUser != null)
+            {
+                // Existující uživatel
+                user = currentUser;
+                Logger.LogInformation("Using existing user: {Email}", user.Email);
+            }
+            else
+            {
+                // Vytvoření nového uživatele
+                var existingUser = await UserManager.FindByEmailAsync(registrationForm.ParentEmail);
+                if (existingUser != null)
+                {
+                    errorMessage = "Uživatel s tímto e-mailem již existuje. Přihlaste se prosím nebo použijte jiný e-mail.";
+                    return;
+                }
+
+                user = new ApplicationUser
+                {
+                    UserName = registrationForm.ParentEmail,
+                    Email = registrationForm.ParentEmail,
+                    FirstName = registrationForm.ParentFirstName,
+                    LastName = registrationForm.ParentLastName,
+                    PhoneNumber = registrationForm.ParentPhone,
+                    EmailConfirmed = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                var createResult = await UserManager.CreateAsync(user, registrationForm.ParentPassword);
+                if (!createResult.Succeeded)
+                {
+                    errorMessage = "Chyba při vytváření účtu: " + string.Join(", ", createResult.Errors.Select(e => e.Description));
+                    return;
+                }
+
+                await UserManager.AddToRoleAsync(user, "Parent");
+                Logger.LogInformation("New parent account created: {Email}", user.Email);
+                successMessage = "Účet byl úspěšně vytvořen!";
+            }
+
+            // Vytvoření registrace
+            var registration = new CampWeb.Models.Registration
+            {
+                CampId = camp.Id,
+                UserId = user.Id,
+                ChildName = registrationForm.ChildName,
+                ChildSurname = registrationForm.ChildSurname,
+                ChildBirthDate = DateTime.SpecifyKind(registrationForm.ChildBirthDate, DateTimeKind.Utc),
+                ParentName = user.FullName,
+                ParentEmail = user.Email!,
+                ParentPhone = registrationForm.ParentPhone,
+                HasMedicalIssues = registrationForm.HasMedicalIssues,
+                MedicalIssuesDescription = registrationForm.MedicalIssuesDescription ?? "",
+                SpecialRequirements = registrationForm.SpecialRequirements ?? "",
+                Status = RegistrationStatus.Pending,
+                RegistrationDate = DateTime.UtcNow,
+                AccessCode = GenerateAccessCode()
+            };
+
+            var success = await CampService.RegisterForCampAsync(registration);
+
+            if (success)
+            {
+                Logger.LogInformation("Registration successful for camp {CampId} by user {UserId}", camp.Id, user.Id);
+                
+                // Přesměrovat na existující Confirmation stránku
+                Navigation.NavigateTo($"/potvrzeni/{registration.AccessCode}");
+            }
+            else
+            {
+                errorMessage = "Registrace se nezdařila. Tábor může být již obsazen nebo došlo k systémové chybě.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error submitting camp registration for camp {CampId}", CampId);
+            errorMessage = "Došlo k chybě při zpracování registrace. Zkuste to prosím znovu.";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private string GenerateAccessCode()
+    {
+        const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        var random = new Random();
+        return new string(Enumerable.Repeat(chars, 8).Select(s => s[random.Next(s.Length)]).ToArray());
+    }
+
+    private int GetChildAge()
+    {
+        if (registrationForm.ChildBirthDate == default)
+            return 0;
+        
+        var today = DateTime.Today;
+        var age = today.Year - registrationForm.ChildBirthDate.Year;
+        
+        if (registrationForm.ChildBirthDate.Date > today.AddYears(-age))
+            age--;
+            
+        return age;
+    }
+
+    private string GetAvailabilityBadgeClass()
+    {
+        return camp?.AvailableSpots switch
+        {
+            0 => "bg-secondary",
+            <= 5 => "bg-warning text-dark",
+            _ => "bg-success"
+        };
+    }
+
+    private string GetAvailabilityText()
+    {
+        return camp?.AvailableSpots switch
+        {
+            0 => "Obsazeno",
+            1 => "Poslední místo",
+            <= 5 => $"Posledních {camp.AvailableSpots} míst",
+            _ => $"{camp.AvailableSpots} volných míst"
+        };
+    }
+
+    public class RegistrationFormModel
+    {
+        [Required(ErrorMessage = "Křestní jméno je povinné")]
+        [StringLength(100)]
+        public string ParentFirstName { get; set; } = "";
+
+        [Required(ErrorMessage = "Příjmení je povinné")]
+        [StringLength(100)]
+        public string ParentLastName { get; set; } = "";
+
+        [Required(ErrorMessage = "E-mail je povinný")]
+        [EmailAddress(ErrorMessage = "Neplatný formát e-mailu")]
+        public string ParentEmail { get; set; } = "";
+
+        [Required(ErrorMessage = "Telefon je povinný")]
+        [Phone(ErrorMessage = "Neplatný formát telefonu")]
+        public string ParentPhone { get; set; } = "";
+
+        // OPRAVENO: Heslo není povinné pro přihlášené uživatele
+        [StringLength(100, MinimumLength = 6, ErrorMessage = "Heslo musí mít alespoň 6 znaků")]
+        public string ParentPassword { get; set; } = ""; // Odstraněn Required atribut
+
+        [Required(ErrorMessage = "Jméno dítěte je povinné")]
+        [StringLength(100)]
+        public string ChildName { get; set; } = "";
+
+        [Required(ErrorMessage = "Příjmení dítěte je povinné")]  
+        [StringLength(100)]
+        public string ChildSurname { get; set; } = "";
+
+        [Required(ErrorMessage = "Datum narození je povinné")]
+        public DateTime ChildBirthDate { get; set; } = DateTime.Today.AddYears(-10);
+
+        public bool HasMedicalIssues { get; set; } = false;
+
+        public string? MedicalIssuesDescription { get; set; }
+
+        public string? SpecialRequirements { get; set; }
+
+        [Range(typeof(bool), "true", "true", ErrorMessage = "Musíte souhlasit s podmínkami")]
+        public bool AgreeToTerms { get; set; } = false;
+    }
+
+}

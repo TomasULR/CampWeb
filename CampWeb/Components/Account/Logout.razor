@@ -1,85 +1,45 @@
 ﻿@page "/odhlaseni"
-@page "/logout"
-@using Microsoft.AspNetCore.Identity
-@using CampWeb.Models
-@inject SignInManager<ApplicationUser> SignInManager
-@inject NavigationManager Navigation
-@inject ILogger<Logout> Logger
-@rendermode InteractiveServer
+
+@using Microsoft.AspNetCore.Antiforgery
+@inject IAntiforgery Antiforgery
+@inject IHttpContextAccessor HttpContextAccessor
 
 <PageTitle>Odhlášení - Letní Tábory Plzeň</PageTitle>
 
-<div class="row justify-content-center">
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-body text-center">
-                @if (isLoggingOut)
-                {
-                    <div class="spinner-border mb-3" role="status">
-                        <span class="visually-hidden">Loading...</span>
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="mb-0">Odhlášení</h2>
+                </div>
+                <div class="card-body text-center">
+                    <div class="mb-4">
+                        <i class="fas fa-sign-out-alt fa-3x text-warning mb-3"></i>
+                        <p class="lead">Opravdu se chcete odhlásit ze systému?</p>
+                        <p class="text-muted">Budete přesměrováni na hlavní stránku.</p>
                     </div>
-                    <h4>Odhlašování...</h4>
-                    <p class="text-muted">Počkejte prosím, probíhá odhlášení.</p>
-                }
-                else if (loggedOut)
-                {
-                    <div class="alert alert-success">
-                        <i class="fas fa-check-circle fa-2x mb-3"></i>
-                        <h4>Úspěšně odhlášeni</h4>
-                        <p class="mb-0">Byli jste úspěšně odhlášeni ze systému.</p>
-                        <small class="text-muted">Přesměrováváme vás na hlavní stránku...</small>
-                    </div>
-                }
-                else
-                {
-                    <h4>Odhlášení</h4>
-                    <p class="text-muted mb-4">Opravdu se chcete odhlásit?</p>
                     
-                    <div class="d-grid gap-2 d-md-flex justify-content-md-center">
-                        <button class="btn btn-danger" @onclick="PerformLogout">
-                            Ano, odhlásit se
-                        </button>
-                        <a href="/" class="btn btn-secondary">
-                            Zrušit
-                        </a>
-                    </div>
-                }
+                    <form action="/Account/logout" method="post">
+                        @{
+                            var requestToken = Antiforgery.GetAndStoreTokens(HttpContextAccessor.HttpContext!);
+                        }
+                        <input type="hidden" name="__RequestVerificationToken" value="@requestToken.RequestToken" />
+                        <input type="hidden" name="returnUrl" value="/" />
+                        
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-center">
+                            <button type="submit" class="btn btn-danger btn-lg me-md-2">
+                                <i class="fas fa-sign-out-alt me-1"></i>
+                                Ano, odhlásit se
+                            </button>
+                            <a href="/" class="btn btn-secondary btn-lg">
+                                <i class="fas fa-times me-1"></i>
+                                Zrušit
+                            </a>
+                        </div>
+                    </form>
+                </div>
             </div>
         </div>
     </div>
 </div>
-
-@code {
-    private bool isLoggingOut = false;
-    private bool loggedOut = false;
-
-    protected override async Task OnInitializedAsync()
-    {
-        // Auto-logout if user accessed this page directly
-        await PerformLogout();
-    }
-
-    private async Task PerformLogout()
-    {
-        isLoggingOut = true;
-        StateHasChanged();
-
-        try
-        {
-            await SignInManager.SignOutAsync();
-            
-            loggedOut = true;
-            StateHasChanged();
-            
-            // Wait a moment to show success message, then redirect
-            await Task.Delay(2000);
-            Navigation.NavigateTo("/", forceLoad: true);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error during logout");
-            // Even if there's an error, redirect to home
-            Navigation.NavigateTo("/", forceLoad: true);
-        }
-    }
-}

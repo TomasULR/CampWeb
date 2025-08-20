@@ -160,47 +160,66 @@ public class CampService : ICampService
 
     public async Task<bool> RegisterForCampAsync(Registration registration)
     {
-        using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
-            // Zkontrolovat dostupnost míst
-            var camp = await _context.Camps
-                .FirstOrDefaultAsync(c => c.Id == registration.CampId);
-
+            // Kontrola dostupnosti míst
+            var camp = await _context.Camps.FindAsync(registration.CampId);
             if (camp == null || camp.AvailableSpots <= 0)
             {
-                _logger.LogWarning("Cannot register for camp {CampId} - no spots available", registration.CampId);
+                _logger.LogWarning("Camp {CampId} not found or no available spots", registration.CampId);
                 return false;
             }
 
-            // Vygenerovat přístupový kód
-            registration.AccessCode = await GenerateUniqueAccessCodeAsync();
-            // OPRAVENO: Použití DateTime.UtcNow místo DateTime.Now
-            registration.RegistrationDate = DateTime.UtcNow;
-            registration.Status = RegistrationStatus.Pending;
+            // Kontrola duplicitní registrace
+            var existingRegistration = await _context.Registrations
+                .AnyAsync(r => r.UserId == registration.UserId && r.CampId == registration.CampId);
 
-            // Přidat registraci
+            if (existingRegistration)
+            {
+                _logger.LogWarning("User {UserId} already registered for camp {CampId}", registration.UserId,
+                    registration.CampId);
+                return false;
+            }
+
+            // Generování unikátního přístupového kódu
+            string accessCode;
+            do
+            {
+                accessCode = GenerateAccessCode();
+            } while (await _context.Registrations.AnyAsync(r => r.AccessCode == accessCode));
+
+            registration.AccessCode = accessCode;
+
+            // Ujistíme se, že všechny DateTime jsou v UTC
+            registration.RegistrationDate = DateTime.SpecifyKind(registration.RegistrationDate, DateTimeKind.Utc);
+            registration.ChildBirthDate = DateTime.SpecifyKind(registration.ChildBirthDate, DateTimeKind.Utc);
+
+            // Přidání registrace
             _context.Registrations.Add(registration);
 
-            // Snížit počet volných míst
+            // Snížení počtu dostupných míst
             camp.AvailableSpots--;
-            _context.Camps.Update(camp);
 
-            // Uložit změny
             await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
 
-            _logger.LogInformation("Successfully registered for camp {CampId} with access code {AccessCode}",
-                registration.CampId, registration.AccessCode);
+            _logger.LogInformation("Registration successful: {AccessCode} for camp {CampId}", accessCode,
+                registration.CampId);
             return true;
         }
         catch (Exception ex)
         {
-            await transaction.RollbackAsync();
-            _logger.LogError(ex, "Error registering for camp");
+            _logger.LogError(ex, "Error registering for camp {CampId}", registration.CampId);
             return false;
         }
     }
+
+    private static string GenerateAccessCode()
+    {
+        const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        var random = new Random();
+        return new string(Enumerable.Repeat(chars, 8).Select(s => s[random.Next(s.Length)]).ToArray());
+    }
+
 
     public async Task<List<Registration>> GetUserRegistrationsAsync(string userId)
     {
@@ -239,8 +258,10 @@ public class CampService : ICampService
         return filterAge switch
         {
             "6-9" => campAge.Contains("6") || campAge.Contains("7") || campAge.Contains("8") || campAge.Contains("9"),
-            "10-13" => campAge.Contains("10") || campAge.Contains("11") || campAge.Contains("12") || campAge.Contains("13"),
-            "14-17" => campAge.Contains("14") || campAge.Contains("15") || campAge.Contains("16") || campAge.Contains("17"),
+            "10-13" => campAge.Contains("10") || campAge.Contains("11") || campAge.Contains("12") ||
+                       campAge.Contains("13"),
+            "14-17" => campAge.Contains("14") || campAge.Contains("15") || campAge.Contains("16") ||
+                       campAge.Contains("17"),
             _ => true
         };
     }
