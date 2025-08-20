@@ -1,252 +1,510 @@
-﻿@page "/platba/{accessCode}"
+﻿@page "/platba/{registrationId:int}"
+@using CampWeb.Models
+@using CampWeb.Services
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.Authorization
 @inject ICampService CampService
+@inject IPaymentService PaymentService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
+@inject ILogger<Payment> Logger
+@attribute [Authorize]
+@rendermode InteractiveServer
 
-<PageTitle>Platba - Letní Tábory Plzeň</PageTitle>
+<PageTitle>Platba za tábor - Letní Tábory Plzeň</PageTitle>
 
 <div class="container my-5">
-    <div class="row justify-content-center">
-        <div class="col-lg-8">
-            @if (camp == null)
-            {
-                <div class="text-center">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Načítání...</span>
-                    </div>
+    @if (isLoading)
+    {
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;"></div>
+                    <h4>Načítání platby...</h4>
                 </div>
-            }
-            else
-            {
-                <div class="card payment-card">
-                    <div class="card-header bg-primary text-white">
-                        <h3 class="mb-0"><i class="fas fa-credit-card me-2"></i>Dokončení platby</h3>
-                    </div>
-                    <div class="card-body">
-                        <!-- Order Summary -->
-                        <div class="order-summary mb-4">
-                            <h5>Shrnutí objednávky</h5>
-                            <div class="d-flex justify-content-between align-items-center border-bottom py-2">
-                                <div>
-                                    <strong>@camp.Name</strong>
-                                    <br>
-                                    <small class="text-muted">@camp.StartDate.ToString("dd.MM.yyyy") - @camp.EndDate.ToString("dd.MM.yyyy")</small>
-                                </div>
-                                <div class="text-end">
-                                    <strong>@camp.Price Kč</strong>
-                                </div>
-                            </div>
-                            <div class="d-flex justify-content-between align-items-center py-2">
-                                <span>Přístupový kód:</span>
-                                <code>@AccessCode</code>
-                            </div>
-                            <hr>
-                            <div class="d-flex justify-content-between align-items-center">
-                                <h5>Celkem k úhradě:</h5>
-                                <h4 class="text-primary">@camp.Price Kč</h4>
-                            </div>
-                        </div>
-
-                        <!-- Payment Methods -->
-                        <div class="payment-methods mb-4">
-                            <h5>Způsob platby</h5>
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <div class="payment-option @(selectedPaymentMethod == "card" ? "selected" : "")" 
-                                         @onclick='() => SelectPaymentMethod("card")'>
-                                        <i class="fas fa-credit-card"></i>
-                                        <span>Platební karta</span>
-                                    </div>
-                                </div>
-                                <div class="col-md-6 mb-3">
-                                    <div class="payment-option @(selectedPaymentMethod == "bank" ? "selected" : "")" 
-                                         @onclick='() => SelectPaymentMethod("bank")'>
-                                        <i class="fas fa-university"></i>
-                                        <span>Bankovní převod</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        @if (selectedPaymentMethod == "card")
-                        {
-                            <!-- Card Payment Form -->
-                            <div class="card-payment-form">
-                                <h5>Údaje platební karty</h5>
-                                <EditForm Model="cardPayment" OnValidSubmit="ProcessCardPayment">
-                                    <div class="mb-3">
-                                        <label class="form-label">Číslo karty</label>
-                                        <InputText @bind-Value="cardPayment.CardNumber" class="form-control" placeholder="1234 5678 9012 3456" />
-                                    </div>
-                                    <div class="row">
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">Platnost do</label>
-                                            <InputText @bind-Value="cardPayment.ExpiryDate" class="form-control" placeholder="MM/RR" />
-                                        </div>
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">CVV</label>
-                                            <InputText @bind-Value="cardPayment.CVV" class="form-control" placeholder="123" />
-                                        </div>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Jméno držitele karty</label>
-                                        <InputText @bind-Value="cardPayment.CardHolderName" class="form-control" />
-                                    </div>
-                                    <button type="submit" class="btn btn-primary btn-lg w-100" disabled="@isProcessing">
-                                        @if (isProcessing)
-                                        {
-                                            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                                            <span>Zpracovávám platbu...</span>
-                                        }
-                                        else
-                                        {
-                                            <i class="fas fa-lock me-2"></i>
-                                            <span>Zaplatit @camp.Price Kč</span>
-                                        }
-                                    </button>
-                                </EditForm>
-                            </div>
-                        }
-                        else if (selectedPaymentMethod == "bank")
-                        {
-                            <!-- Bank Transfer Info -->
-                            <div class="bank-transfer-info">
-                                <h5>Údaje pro bankovní převod</h5>
-                                <div class="alert alert-info">
-                                    <h6>Platební údaje:</h6>
-                                    <p><strong>Číslo účtu:</strong> 123456789/0100</p>
-                                    <p><strong>Variabilní symbol:</strong> @AccessCode</p>
-                                    <p><strong>Částka:</strong> @camp.Price Kč</p>
-                                    <p><strong>Zpráva pro příjemce:</strong> Letní tábor - @camp.Name</p>
-                                </div>
-                                <p>Po provedení platby bude vaše přihláška automaticky potvrzena. Potvrzení obdržíte e-mailem během 24 hodin.</p>
-                                <button class="btn btn-primary btn-lg w-100" @onclick="ConfirmBankTransfer">
-                                    <i class="fas fa-check me-2"></i>Potvrzuji bankovní převod
-                                </button>
-                            </div>
-                        }
-
-                        <!-- Security Info -->
-                        <div class="security-info mt-4">
-                            <div class="row text-center">
-                                <div class="col-md-4">
-                                    <i class="fas fa-shield-alt text-success fs-2"></i>
-                                    <p class="small mt-2">Zabezpečená platba</p>
-                                </div>
-                                <div class="col-md-4">
-                                    <i class="fas fa-lock text-success fs-2"></i>
-                                    <p class="small mt-2">SSL šifrování</p>
-                                </div>
-                                <div class="col-md-4">
-                                    <i class="fas fa-undo text-success fs-2"></i>
-                                    <p class="small mt-2">Možnost vrácení</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            }
+            </div>
         </div>
-    </div>
+    }
+    else if (registration == null)
+    {
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="alert alert-warning text-center">
+                    <h3>Registrace nenalezena</h3>
+                    <p>Požadovaná registrace nebyla nalezena nebo k ní nemáte oprávnění.</p>
+                    <a href="/moje-registrace" class="btn btn-primary">Zpět na registrace</a>
+                </div>
+            </div>
+        </div>
+    }
+    else if (registration.Status == RegistrationStatus.Paid)
+    {
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="alert alert-success text-center">
+                    <h3>
+                        <i class="fas fa-check-circle me-2"></i>
+                        Tábor je již zaplacen
+                    </h3>
+                    <p>Tato registrace byla již uhrazena.</p>
+                    <div class="mt-3">
+                        <a href="/moje-registrace" class="btn btn-primary me-2">Moje registrace</a>
+                        <a href="/potvrzeni/@registration.AccessCode" class="btn btn-outline-primary">Potvrzení</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="row justify-content-center">
+            <div class="col-lg-10">
+                <div class="card border-0 shadow-lg">
+                    <div class="card-header bg-gradient-primary text-white py-4">
+                        <div class="row align-items-center">
+                            <div class="col">
+                                <h2 class="mb-0 fw-bold">
+                                    <i class="fas fa-credit-card me-3"></i>
+                                    Platba za tábor
+                                </h2>
+                                <small class="opacity-75">Rychlé a bezpečné placení</small>
+                            </div>
+                            <div class="col-auto">
+                                <div class="payment-amount">
+                                    <h3 class="mb-0 fw-bold">@registration.Camp.Price.ToString("N0") Kč</h3>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card-body p-5">
+                        @if (!string.IsNullOrEmpty(errorMessage))
+                        {
+                            <div class="alert alert-danger border-0 shadow-sm">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                @errorMessage
+                            </div>
+                        }
+
+                        @if (!string.IsNullOrEmpty(successMessage))
+                        {
+                            <div class="alert alert-success border-0 shadow-sm">
+                                <i class="fas fa-check-circle me-2"></i>
+                                @successMessage
+                            </div>
+                        }
+
+                        @if (isProcessing)
+                        {
+                            <div class="alert alert-info border-0 shadow-sm">
+                                <div class="d-flex align-items-center">
+                                    <div class="spinner-border spinner-border-sm text-primary me-3" role="status"></div>
+                                    <div>
+                                        <strong>Zpracování platby...</strong>
+                                        <div class="small text-muted">Prosím čekejte, vaše platba se zpracovává.</div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+
+                        <div class="row">
+                            <!-- Levá strana - Platební metody -->
+                            <div class="col-lg-7">
+                                <h4 class="text-primary mb-4 fw-bold">
+                                    <i class="fas fa-wallet me-2"></i>
+                                    Způsob platby
+                                </h4>
+
+                                <!-- Google Pay Section -->
+                                <div class="payment-method-card mb-4">
+                                    <div class="card border-0 shadow-sm bg-light">
+                                        <div class="card-body p-4">
+                                            <div class="row align-items-center">
+                                                <div class="col-md-6">
+                                                    <div class="d-flex align-items-center mb-3">
+                                                        <i class="fab fa-google-pay text-primary me-3" style="font-size: 2rem;"></i>
+                                                        <div>
+                                                            <h5 class="mb-1 fw-bold">Google Pay</h5>
+                                                            <p class="text-muted small mb-0">Rychlé a bezpečné placení</p>
+                                                        </div>
+                                                    </div>
+                                                    <div class="google-pay-features">
+                                                        <small class="text-success d-block">
+                                                            <i class="fas fa-shield-alt me-1"></i>
+                                                            Šifrované a bezpečné
+                                                        </small>
+                                                        <small class="text-success d-block">
+                                                            <i class="fas fa-bolt me-1"></i>
+                                                            Okamžité zpracování
+                                                        </small>
+                                                        <small class="text-success d-block">
+                                                            <i class="fas fa-check me-1"></i>
+                                                            Bez zadávání údajů
+                                                        </small>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <div class="google-pay-container text-center">
+                                                        <!-- Google Pay Button Container -->
+                                                        <div id="google-pay-button-container" style="min-height: 50px;">
+                                                            <div class="text-muted">
+                                                                <small>
+                                                                    <i class="fas fa-info-circle me-1"></i>
+                                                                    Google Pay se načítá...
+                                                                </small>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="divider-with-text mb-4">
+                                    <span class="text-muted small">NEBO</span>
+                                </div>
+
+                                <!-- Alternativní platební metody -->
+                                <div class="alternative-payments">
+                                    <h5 class="text-secondary mb-3">Jiné způsoby platby</h5>
+                                    
+                                    <div class="payment-method-card mb-3">
+                                        <div class="card border">
+                                            <div class="card-body">
+                                                <div class="d-flex align-items-center">
+                                                    <i class="fas fa-university text-primary me-3 fs-4"></i>
+                                                    <div class="flex-grow-1">
+                                                        <h6 class="mb-2 fw-bold">Bankovní převod</h6>
+                                                        <div class="bank-details">
+                                                            <div class="row">
+                                                                <div class="col-sm-6">
+                                                                    <small class="text-muted d-block">Číslo účtu:</small>
+                                                                    <strong class="d-block">123456789/0800</strong>
+                                                                </div>
+                                                                <div class="col-sm-6">
+                                                                    <small class="text-muted d-block">Variabilní symbol:</small>
+                                                                    <strong class="d-block">@registration.Id</strong>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Pravá strana - Souhrn objednávky -->
+                            <div class="col-lg-5">
+                                <div class="order-summary-sticky">
+                                    <h4 class="text-primary mb-4 fw-bold">
+                                        <i class="fas fa-receipt me-2"></i>
+                                        Souhrn objednávky
+                                    </h4>
+                                    
+                                    <div class="card border-0 bg-light shadow-sm">
+                                        <div class="card-body p-4">
+                                            <div class="camp-info mb-4">
+                                                <h5 class="text-dark mb-2 fw-bold">@registration.Camp.Name</h5>
+                                                <div class="camp-details">
+                                                    <p class="mb-2 text-muted">
+                                                        <i class="fas fa-map-marker-alt me-2"></i>
+                                                        @registration.Camp.Location
+                                                    </p>
+                                                    <p class="mb-2 text-muted">
+                                                        <i class="fas fa-calendar-alt me-2"></i>
+                                                        @registration.Camp.StartDate.ToString("dd.MM.yyyy") - @registration.Camp.EndDate.ToString("dd.MM.yyyy")
+                                                    </p>
+                                                    <p class="mb-3 text-muted">
+                                                        <i class="fas fa-clock me-2"></i>
+                                                        @((registration.Camp.EndDate - registration.Camp.StartDate).Days) dní
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <hr>
+
+                                            <div class="child-info mb-4">
+                                                <h6 class="text-primary mb-2 fw-bold">
+                                                    <i class="fas fa-child me-2"></i>
+                                                    Účastník
+                                                </h6>
+                                                <div class="participant-details">
+                                                    <p class="mb-1">
+                                                        <strong>@registration.ChildFullName</strong>
+                                                        <span class="badge bg-secondary ms-2">@registration.ChildAge let</span>
+                                                    </p>
+                                                    <small class="text-muted">
+                                                        <i class="fas fa-birthday-cake me-1"></i>
+                                                        @registration.ChildBirthDate.ToString("dd.MM.yyyy")
+                                                    </small>
+                                                </div>
+                                                <div class="mt-3">
+                                                    <small class="text-muted d-block">Přístupový kód:</small>
+                                                    <code class="bg-primary text-white px-2 py-1 rounded">
+                                                        @registration.AccessCode
+                                                    </code>
+                                                </div>
+                                            </div>
+
+                                            <hr>
+
+                                            <div class="price-breakdown">
+                                                <div class="total-price d-flex justify-content-between">
+                                                    <h5 class="mb-0 fw-bold">Celkem:</h5>
+                                                    <h4 class="mb-0 fw-bold text-primary">
+                                                        @registration.Camp.Price.ToString("N0") Kč
+                                                    </h4>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr class="my-5">
+
+                        <div class="text-center">
+                            <a href="/moje-registrace" class="btn btn-outline-secondary btn-lg me-3">
+                                <i class="fas fa-arrow-left me-2"></i>
+                                Zpět na registrace
+                            </a>
+                            <a href="/potvrzeni/@registration.AccessCode" class="btn btn-outline-primary btn-lg">
+                                <i class="fas fa-receipt me-2"></i>
+                                Zobrazit potvrzení
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
 </div>
 
-<style>
-    .payment-card {
-        box-shadow: 0 8px 25px rgba(0,0,0,0.1);
-        border: none;
-        border-radius: 15px;
-    }
-
-    .order-summary {
-        background: #f8f9fa;
-        padding: 20px;
-        border-radius: 10px;
-    }
-
-    .payment-option {
-        border: 2px solid #e9ecef;
-        border-radius: 10px;
-        padding: 20px;
-        text-align: center;
-        cursor: pointer;
-        transition: all 0.3s ease;
-    }
-
-    .payment-option:hover {
-        border-color: #2c5aa0;
-        background-color: #f8f9fa;
-    }
-
-    .payment-option.selected {
-        border-color: #2c5aa0;
-        background-color: rgba(44, 90, 160, 0.1);
-    }
-
-    .payment-option i {
-        font-size: 2rem;
-        color: #2c5aa0;
-        display: block;
-        margin-bottom: 10px;
-    }
-
-    .card-payment-form, .bank-transfer-info {
-        background: #f8f9fa;
-        padding: 20px;
-        border-radius: 10px;
-    }
-
-    .security-info {
-        border-top: 1px solid #e9ecef;
-        padding-top: 20px;
-    }
-</style>
-
 @code {
-    [Parameter] public string AccessCode { get; set; } = "";
-    
-    private Camp? camp;
-    private string selectedPaymentMethod = "card";
+    [Parameter] public int RegistrationId { get; set; }
+
+    private Models.Registration? registration;
+    private ApplicationUser? currentUser;
+    private bool isLoading = true;
     private bool isProcessing = false;
-    private CardPayment cardPayment = new();
+    private string errorMessage = "";
+    private string successMessage = "";
 
     protected override async Task OnInitializedAsync()
     {
-        // In a real app, you would look up the registration by access code
-        // For demo, we'll use the first camp
-        var camps = await CampService.GetAllCampsAsync();
-        camp = camps.FirstOrDefault();
+        try
+        {
+            await LoadCurrentUser();
+            await LoadRegistration();
+            // Don't call InitializeGooglePay here - JavaScript is not available during server-side rendering
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading payment page for registration {RegistrationId}", RegistrationId);
+            errorMessage = "Došlo k chybě při načítání platby.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
     }
 
-    private void SelectPaymentMethod(string method)
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        selectedPaymentMethod = method;
+        if (firstRender && registration != null && registration.Status != RegistrationStatus.Paid)
+        {
+            try
+            {
+                await InitializeGooglePay();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error initializing Google Pay");
+                StateHasChanged();
+            }
+        }
     }
 
-    private async Task ProcessCardPayment()
+    private async Task LoadCurrentUser()
     {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated == true)
+        {
+            var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!string.IsNullOrEmpty(userId))
+            {
+                currentUser = await UserManager.FindByIdAsync(userId);
+            }
+        }
+    }
+
+    private async Task LoadRegistration()
+    {
+        if (currentUser == null) return;
+
+        var userRegistrations = await CampService.GetUserRegistrationsAsync(currentUser.Id);
+        registration = userRegistrations.FirstOrDefault(r => r.Id == RegistrationId);
+    }
+
+    private async Task InitializeGooglePay()
+    {
+        if (registration == null) return;
+
+        var paymentData = new
+        {
+            merchantId = "12345678901234567890", // Test merchant ID
+            amount = registration.Camp.Price.ToString("F2", System.Globalization.CultureInfo.InvariantCulture),
+            currency = "CZK",
+            registrationId = registration.Id,
+            description = $"Platba za tábor: {registration.Camp.Name}"
+        };
+
+        try
+        {
+            // Wait a bit to ensure scripts are loaded
+            await Task.Delay(200);
+            
+            // Check if the function exists first
+            var functionExists = await JSRuntime.InvokeAsync<bool>("eval", "typeof initializeGooglePay === 'function'");
+        
+            if (!functionExists)
+            {
+                Logger.LogWarning("Google Pay script not yet loaded, retrying...");
+                // Retry after a longer delay
+                await Task.Delay(1000);
+                functionExists = await JSRuntime.InvokeAsync<bool>("eval", "typeof initializeGooglePay === 'function'");
+            }
+
+            if (functionExists)
+            {
+                await JSRuntime.InvokeVoidAsync("initializeGooglePay", paymentData, 
+                    DotNetObjectReference.Create(this));
+                Logger.LogInformation("Google Pay initialized successfully");
+            }
+            else
+            {
+                Logger.LogError("Google Pay script failed to load");
+                try
+                {
+                    await JSRuntime.InvokeVoidAsync("updateGooglePayContainer", 
+                        "<div class='text-muted small text-center'><i class='fas fa-exclamation-circle me-1'></i>Google Pay není dostupný</div>");
+                }
+                catch
+                {
+                    // Ignore if container update fails
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to initialize Google Pay");
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("updateGooglePayContainer", 
+                    "<div class='text-muted small text-center'><i class='fas fa-exclamation-circle me-1'></i>Chyba při načítání Google Pay</div>");
+            }
+            catch
+            {
+                // Ignore if container update fails
+            }
+        }
+    }
+    
+    [JSInvokable]
+    public async Task ProcessGooglePayPayment(string paymentToken)
+    {
+        if (registration == null) return;
+
         isProcessing = true;
+        errorMessage = "";
+        successMessage = "";
         StateHasChanged();
 
-        // Simulate payment processing
-        await Task.Delay(3000);
+        try
+        {
+            var result = await PaymentService.ProcessGooglePayPaymentAsync(
+                registration.Id, paymentToken, registration.Camp.Price);
 
-        // In a real app, you would integrate with a payment gateway like Stripe, PayU, etc.
-        await JSRuntime.InvokeVoidAsync("showAlert", "Platba byla úspěšně zpracována! Přihláška je potvrzena.");
-        
-        Navigation.NavigateTo($"/potvrzeni/{AccessCode}");
+            if (result.IsSuccess)
+            {
+                successMessage = "Platba byla úspěšně zpracována! Přesměrováváme vás...";
+                registration.Status = RegistrationStatus.Paid;
+                StateHasChanged();
+                
+                await Task.Delay(3000);
+                Navigation.NavigateTo($"/potvrzeni/{registration.AccessCode}");
+            }
+            else
+            {
+                errorMessage = $"Platba se nezdařila: {result.ErrorMessage}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error processing Google Pay payment");
+            errorMessage = "Došlo k chybě při zpracování platby.";
+        }
+        finally
+        {
+            isProcessing = false;
+            StateHasChanged();
+        }
     }
 
-    private async Task ConfirmBankTransfer()
+    [JSInvokable]
+    public void OnGooglePayError(string error)
     {
-        await JSRuntime.InvokeVoidAsync("showAlert", "Pokyny pro bankovní převod byly zaznamenány. Po připsání platby na účet bude vaše přihláška potvrzena.");
-        Navigation.NavigateTo($"/potvrzeni/{AccessCode}");
+        Logger.LogWarning("Google Pay error: {Error}", error);
+        var container = JSRuntime.InvokeVoidAsync("updateGooglePayContainer", 
+            "<div class='text-muted small text-center'><i class='fas fa-exclamation-circle me-1'></i>Google Pay není dostupný</div>");
     }
 
-    public class CardPayment
+    [JSInvokable]
+    public void OnGooglePayReady()
     {
-        public string CardNumber { get; set; } = "";
-        public string ExpiryDate { get; set; } = "";
-        public string CVV { get; set; } = "";
-        public string CardHolderName { get; set; } = "";
+        // Google Pay je připraven
+        Logger.LogInformation("Google Pay button is ready");
     }
 }
+
+<style>
+    .bg-gradient-primary {
+        background: linear-gradient(135deg, var(--bs-primary) 0%, #0056b3 100%);
+    }
+
+    .divider-with-text {
+        position: relative;
+        text-align: center;
+        border-bottom: 1px solid #dee2e6;
+        margin: 2rem 0;
+    }
+
+    .divider-with-text span {
+        background: white;
+        padding: 0 1rem;
+        position: relative;
+        top: 8px;
+    }
+
+    code {
+        background: rgba(13, 110, 253, 0.1);
+        color: var(--bs-primary);
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 0.9rem;
+        font-weight: 600;
+    }
+
+    #google-pay-button-container {
+        width: 100%;
+        max-width: 240px;
+        margin: 0 auto;
+    }
+</style>

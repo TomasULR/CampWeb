@@ -87,6 +87,7 @@ builder.Services.ConfigureApplicationCookie(options =>
 builder.Services.AddScoped<ICampService, CampService>();
 builder.Services.AddScoped<IRegistrationService, RegistrationService>();
 builder.Services.AddScoped<IPhotoService, PhotoService>();
+builder.Services.AddScoped<IPaymentService, PaymentService>();
 
 // Add logging
 builder.Services.AddLogging(logging =>

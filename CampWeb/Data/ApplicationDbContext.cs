@@ -17,6 +17,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<Registration> Registrations { get; set; }
     public DbSet<CampPhoto> CampPhotos { get; set; }
     public DbSet<LiveUpdate> LiveUpdates { get; set; }
+    public DbSet<Payment> Payments { get; set; }
 
     // Note: Users (ApplicationUser) is already included via IdentityDbContext<ApplicationUser>
     // Note: Roles, UserRoles, UserClaims, etc. are automatically included via IdentityDbContext
@@ -98,6 +99,20 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         {
             entity.Property(e => e.FirstName).IsRequired().HasMaxLength(100);
             entity.Property(e => e.LastName).IsRequired().HasMaxLength(100);
+        });
+        modelBuilder.Entity<Payment>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Amount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.Currency).IsRequired().HasMaxLength(3);
+            entity.Property(e => e.PaymentMethod).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.TransactionId).IsRequired().HasMaxLength(100);
+            entity.HasIndex(e => e.TransactionId).IsUnique();
+    
+            entity.HasOne(e => e.Registration)
+                .WithMany()
+                .HasForeignKey(e => e.RegistrationId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

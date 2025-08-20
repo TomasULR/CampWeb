@@ -224,6 +224,13 @@
                                         </a>
                                     </div>
                                 </div>
+                                @if (registration.Status == RegistrationStatus.Pending || registration.Status == RegistrationStatus.Confirmed)
+                                {
+                                    <a href="/platba/@registration.Id" class="btn btn-success btn-sm">
+                                        <i class="fas fa-credit-card me-1"></i>
+                                        Zaplatit
+                                    </a>
+                                }
                             </div>
                         </div>
                     }
