@@ -1,25 +1,76 @@
-﻿// Global map variables
+﻿// ========================================
+// COMPLETE SITE.JS FOR CAMP MAP SYSTEM
+// Compatible with .NET 9 Blazor
+// Supports both Mapa.razor and CampDetail.razor
+// ========================================
+
+// Global variables
 let map = null;
 let markersGroup = null;
 let campMarkers = {};
+let detailMaps = {};
+
+// DOM ready event
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('✅ DOM loaded');
+    console.log('📍 Leaflet available:', typeof L !== 'undefined');
+    console.log('🅱️ Bootstrap available:', typeof bootstrap !== 'undefined');
+
+    // Add custom map styles
+    addMapStyles();
+});
+
+// ========================================
+// UTILITY FUNCTIONS
+// ========================================
 
 // Wait for Leaflet to be loaded
 function waitForLeaflet(callback) {
     if (typeof L !== 'undefined') {
         callback();
     } else {
+        console.log('⏳ Waiting for Leaflet to load...');
         setTimeout(() => waitForLeaflet(callback), 100);
     }
 }
 
-// Initialize main map for camps overview
+// Validate coordinates
+function validateCoordinates(lat, lng) {
+    const latitude = parseFloat(lat);
+    const longitude = parseFloat(lng);
+
+    if (isNaN(latitude) || isNaN(longitude)) {
+        return { valid: false, error: 'Invalid number format', lat: 0, lng: 0 };
+    }
+
+    if (latitude === 0 && longitude === 0) {
+        return { valid: false, error: 'Zero coordinates', lat: latitude, lng: longitude };
+    }
+
+    if (latitude < -90 || latitude > 90) {
+        return { valid: false, error: 'Invalid latitude range', lat: latitude, lng: longitude };
+    }
+
+    if (longitude < -180 || longitude > 180) {
+        return { valid: false, error: 'Invalid longitude range', lat: latitude, lng: longitude };
+    }
+
+    return { valid: true, lat: latitude, lng: longitude };
+}
+
+// ========================================
+// OVERVIEW MAP FUNCTIONS (Mapa.razor)
+// ========================================
+
+// Initialize main overview map
 window.initializeMap = function(camps) {
-    console.log('Initializing map with camps:', camps);
+    console.log('🗺️ Initializing overview map with', camps?.length || 0, 'camps');
 
     waitForLeaflet(() => {
         try {
-            // Destroy existing map if it exists
+            // Clean up existing map
             if (map) {
+                console.log('🧹 Cleaning up existing overview map');
                 map.remove();
                 map = null;
             }
@@ -27,18 +78,24 @@ window.initializeMap = function(camps) {
             // Check if map container exists
             const mapContainer = document.getElementById('map');
             if (!mapContainer) {
-                console.error('Map container not found');
+                console.error('❌ Overview map container #map not found');
                 return;
             }
 
-            // Initialize map centered on Plzen
+            console.log('📐 Map container found, dimensions:', mapContainer.offsetWidth, 'x', mapContainer.offsetHeight);
+
+            // Clear container
+            mapContainer.innerHTML = '';
+
+            // Initialize map centered on Plzen (Czech Republic)
             map = L.map('map', {
-                center: [49.7384, 13.3736],
+                center: [49.7384, 13.3736], // Plzen coordinates
                 zoom: 11,
-                scrollWheelZoom: true
+                scrollWheelZoom: true,
+                zoomControl: true
             });
 
-            // Add tile layer with Czech map
+            // Add OpenStreetMap tile layer
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
                 maxZoom: 18,
@@ -48,31 +105,57 @@ window.initializeMap = function(camps) {
             // Create markers group
             markersGroup = L.layerGroup().addTo(map);
 
-            // Add markers for camps
-            if (camps && camps.length > 0) {
-                updateMapMarkers(camps);
+            // Add markers for camps if provided
+            if (camps && Array.isArray(camps) && camps.length > 0) {
+                addCampMarkers(camps);
 
                 // Fit map to show all markers
-                if (camps.length > 1) {
-                    const bounds = L.latLngBounds(camps.map(c => [c.latitude, c.longitude]));
-                    map.fitBounds(bounds, { padding: [50, 50] });
+                if (camps.length === 1) {
+                    // Single camp - center on it
+                    const camp = camps[0];
+                    const coordCheck = validateCoordinates(camp.latitude, camp.longitude);
+                    if (coordCheck.valid) {
+                        map.setView([coordCheck.lat, coordCheck.lng], 14);
+                    }
+                } else if (camps.length > 1) {
+                    // Multiple camps - fit bounds
+                    const validCamps = camps.filter(c => {
+                        const check = validateCoordinates(c.latitude, c.longitude);
+                        return check.valid;
+                    });
+
+                    if (validCamps.length > 0) {
+                        const bounds = L.latLngBounds(validCamps.map(c => [c.latitude, c.longitude]));
+                        map.fitBounds(bounds, { padding: [50, 50] });
+                    }
                 }
+            } else {
+                console.log('📍 No valid camps to display');
             }
 
-            console.log('Map initialized successfully with', camps.length, 'camps');
+            // Force resize after initialization
+            setTimeout(() => {
+                map.invalidateSize();
+                console.log('✅ Overview map initialized successfully with', camps?.length || 0, 'camps');
+            }, 100);
+
         } catch (error) {
-            console.error('Error initializing map:', error);
+            console.error('❌ Error initializing overview map:', error);
+            const container = document.getElementById('map');
+            if (container) {
+                container.innerHTML = '<div class="alert alert-danger p-3">❌ Chyba při načítání mapy: ' + error.message + '</div>';
+            }
         }
     });
 };
 
-// Update map markers based on filtered camps
+// Update markers on the overview map
 window.updateMapMarkers = function(camps) {
-    console.log('Updating map markers for camps:', camps);
+    console.log('🔄 Updating overview map markers with', camps?.length || 0, 'camps');
 
     if (!map) {
-        console.warn('Map not initialized yet, initializing now...');
-        initializeMap(camps);
+        console.warn('⚠️ Overview map not initialized, initializing now...');
+        window.initializeMap(camps);
         return;
     }
 
@@ -84,254 +167,393 @@ window.updateMapMarkers = function(camps) {
         campMarkers = {};
 
         // Add new markers
-        if (camps && Array.isArray(camps)) {
-            camps.forEach(camp => {
-                // Validate camp data
-                if (!camp.latitude || !camp.longitude) {
-                    console.warn('Camp missing coordinates:', camp.name);
-                    return;
-                }
+        if (camps && Array.isArray(camps) && camps.length > 0) {
+            addCampMarkers(camps);
 
-                const icon = getMarkerIcon(camp.type);
-                const marker = L.marker([camp.latitude, camp.longitude], { icon })
-                    .bindPopup(createPopupContent(camp));
-
-                if (markersGroup) {
-                    markersGroup.addLayer(marker);
-                    campMarkers[camp.id] = marker;
-                }
+            // Adjust map view to show markers
+            const validCamps = camps.filter(c => {
+                const check = validateCoordinates(c.latitude, c.longitude);
+                return check.valid;
             });
 
-            // Adjust map view if there are markers
-            if (camps.length > 0) {
-                const bounds = L.latLngBounds(camps.map(c => [c.latitude, c.longitude]));
+            if (validCamps.length === 1) {
+                const camp = validCamps[0];
+                map.setView([camp.latitude, camp.longitude], 14);
+            } else if (validCamps.length > 1) {
+                const bounds = L.latLngBounds(validCamps.map(c => [c.latitude, c.longitude]));
                 map.fitBounds(bounds, { padding: [50, 50] });
             }
         }
 
-        console.log('Map markers updated:', camps.length, 'camps');
+        console.log('✅ Overview map markers updated');
+
     } catch (error) {
-        console.error('Error updating map markers:', error);
+        console.error('❌ Error updating overview map markers:', error);
     }
 };
 
-// Create popup content for camp
-function createPopupContent(camp) {
-    const availabilityClass = getAvailabilityBadge(camp.availableSpots);
-    const availabilityText = getAvailabilityText(camp.availableSpots);
+// Add camp markers to the overview map
+function addCampMarkers(camps) {
+    let validMarkerCount = 0;
 
-    return `
-        <div class="popup-content" style="min-width: 250px;">
-            <h6 class="mb-2" style="color: #2c5aa0;">${camp.name}</h6>
-            <p class="small text-muted mb-1">
-                <i class="fas fa-map-marker-alt"></i> ${camp.location}
-            </p>
-            <p class="small mb-2">${camp.shortDescription}</p>
-            <p class="fw-bold text-primary mb-2">${camp.price.toLocaleString('cs-CZ')} Kč / týden</p>
-            <div class="d-flex gap-2 align-items-center">
-                <a href="/tabor/${camp.id}" class="btn btn-primary btn-sm">
-                    <i class="fas fa-info-circle"></i> Detail
-                </a>
-                <span class="badge ${availabilityClass}">${availabilityText}</span>
-            </div>
-        </div>
-    `;
+    camps.forEach(camp => {
+        // Validate camp data
+        if (!camp) {
+            console.warn('⚠️ Null camp object');
+            return;
+        }
+
+        const coordCheck = validateCoordinates(camp.latitude, camp.longitude);
+        if (!coordCheck.valid) {
+            console.warn('⚠️ Camp with invalid coordinates:', camp.name, coordCheck.error);
+            return;
+        }
+
+        validMarkerCount++;
+
+        const icon = getOverviewMarkerIcon(camp.type);
+        const marker = L.marker([coordCheck.lat, coordCheck.lng], { icon })
+            .bindPopup(createPopupContent(camp));
+
+        if (markersGroup) {
+            markersGroup.addLayer(marker);
+            campMarkers[camp.id] = marker;
+        }
+    });
+
+    console.log('📍 Added', validMarkerCount, 'valid markers to overview map');
 }
 
-// Focus map on specific camp
+// Focus map on specific camp (used by "Focus on Map" buttons)
 window.focusMapOnCamp = function(lat, lng) {
     try {
         if (map) {
-            map.setView([lat, lng], 15, {
-                animate: true,
-                duration: 1
-            });
-            console.log('Map focused on coordinates:', lat, lng);
+            const coordCheck = validateCoordinates(lat, lng);
+            if (coordCheck.valid) {
+                map.setView([coordCheck.lat, coordCheck.lng], 15, {
+                    animate: true,
+                    duration: 1
+                });
+                console.log('🎯 Map focused on coordinates:', coordCheck.lat, coordCheck.lng);
+
+                // Highlight the marker if it exists
+                Object.values(campMarkers).forEach(marker => {
+                    const markerLatLng = marker.getLatLng();
+                    if (Math.abs(markerLatLng.lat - coordCheck.lat) < 0.001 &&
+                        Math.abs(markerLatLng.lng - coordCheck.lng) < 0.001) {
+                        marker.openPopup();
+                    }
+                });
+            } else {
+                console.warn('⚠️ Invalid coordinates for focus:', coordCheck.error);
+            }
         } else {
-            console.warn('Map not initialized');
+            console.warn('⚠️ Map not initialized for focus operation');
         }
     } catch (error) {
-        console.error('Error focusing map:', error);
+        console.error('❌ Error focusing map:', error);
     }
 };
 
+// ========================================
+// DETAIL MAP FUNCTIONS (CampDetail.razor)
+// ========================================
+
 // Initialize single camp detail map
-window.initializeCampMap = function(lat, lng, name) {
-    console.log('Initializing camp detail map for:', name, 'at', lat, lng);
+window.initializeCampDetailMap = function(mapId, latitude, longitude, campName, location) {
+    console.log('🏕️ === CAMP DETAIL MAP DEBUG ===');
+    console.log('📍 MapId:', mapId);
+    console.log('🌍 Coordinates:', latitude, longitude);
+    console.log('🏕️ Camp:', campName);
+    console.log('📍 Location:', location);
 
     waitForLeaflet(() => {
         try {
             // Check if container exists
-            const mapContainer = document.getElementById('campMap');
-            if (!mapContainer) {
-                console.error('Camp map container not found');
+            const container = document.getElementById(mapId);
+            if (!container) {
+                console.error('❌ Detail map container not found:', mapId);
                 return;
             }
 
-            // Initialize map
-            const campMap = L.map('campMap', {
-                center: [lat, lng],
-                zoom: 13,
-                scrollWheelZoom: false
-            });
+            console.log('📐 Container found, dimensions:', container.offsetWidth, 'x', container.offsetHeight);
+            console.log('👁️ Container visible:', container.offsetWidth > 0 && container.offsetHeight > 0);
 
-            // Add tile layer
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-                maxZoom: 18
-            }).addTo(campMap);
+            // Clean up existing map instance
+            if (detailMaps[mapId]) {
+                console.log('🧹 Cleaning up existing detail map:', mapId);
+                detailMaps[mapId].remove();
+                delete detailMaps[mapId];
+            }
 
-            // Create custom icon for the camp
-            const icon = L.divIcon({
-                html: `<div style="background: #2c5aa0; color: white; border-radius: 50%; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; font-size: 24px; border: 3px solid white; box-shadow: 0 3px 10px rgba(0,0,0,0.4);">
-                    <i class="fas fa-campground"></i>
-                </div>`,
-                className: 'custom-camp-icon',
-                iconSize: [50, 50],
-                iconAnchor: [25, 25]
-            });
+            // Clear container
+            container.innerHTML = '';
 
-            // Add marker for the camp
-            L.marker([lat, lng], { icon })
-                .bindPopup(`<strong>${name}</strong>`)
-                .addTo(campMap)
-                .openPopup();
-
-            console.log('Camp detail map initialized successfully');
-        } catch (error) {
-            console.error('Error initializing camp detail map:', error);
-        }
-    });
-};
-// Initialize single camp detail map
-window.initializeCampDetailMap = function(mapElementId, latitude, longitude, campName, location) {
-    console.log('Initializing camp detail map for:', campName);
-
-    waitForLeaflet(() => {
-        try {
-            const mapContainer = document.getElementById(mapElementId);
-            if (!mapContainer) {
-                console.error('Map container not found:', mapElementId);
+            // Validate coordinates
+            const coordCheck = validateCoordinates(latitude, longitude);
+            if (!coordCheck.valid) {
+                console.warn('⚠️ Invalid coordinates for detail map:', coordCheck.error);
+                container.innerHTML = `
+                    <div class="alert alert-warning p-3 text-center">
+                        <i class="fas fa-exclamation-triangle"></i><br>
+                        <strong>Souřadnice pro tábor nejsou k dispozici</strong><br>
+                        <small class="text-muted">Chyba: ${coordCheck.error}</small>
+                    </div>
+                `;
                 return;
             }
 
-            // Remove existing map if it exists
-            if (window.campDetailMapInstance) {
-                window.campDetailMapInstance.remove();
-                window.campDetailMapInstance = null;
-            }
+            console.log('✅ Creating detail map with valid coordinates:', coordCheck.lat, coordCheck.lng);
 
-            // Initialize map
-            window.campDetailMapInstance = L.map(mapElementId, {
-                center: [latitude, longitude],
-                zoom: 13,
-                scrollWheelZoom: true
+            // Create map instance
+            const detailMap = L.map(mapId, {
+                center: [coordCheck.lat, coordCheck.lng],
+                zoom: 15,
+                scrollWheelZoom: true,
+                zoomControl: true,
+                attributionControl: true
             });
 
+            // Store map instance
+            detailMaps[mapId] = detailMap;
+
+            console.log('🗺️ Map instance created, adding tile layer...');
+
             // Add tile layer
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '© OpenStreetMap contributors',
-                maxZoom: 18
-            }).addTo(window.campDetailMapInstance);
+                maxZoom: 18,
+                minZoom: 5
+            });
 
-            // Add marker for the camp
-            const marker = L.marker([latitude, longitude])
-                .addTo(window.campDetailMapInstance);
+            tileLayer.addTo(detailMap);
 
-            const popupContent = `
-                <div class="camp-detail-popup">
-                    <h6><strong>${campName}</strong></h6>
-                    <p><i class="fas fa-map-marker-alt text-danger"></i> ${location}</p>
+            console.log('🎯 Adding marker...');
+
+            // Create and add marker
+            const marker = L.marker([coordCheck.lat, coordCheck.lng], {
+                icon: getDetailMarkerIcon()
+            })
+                .addTo(detailMap)
+                .bindPopup(`
+                <div class="popup-content">
+                    <h6 class="mb-2">${campName}</h6>
+                    <p class="mb-0"><i class="fas fa-map-marker-alt"></i> ${location}</p>
                 </div>
-            `;
+            `, {
+                    closeButton: true,
+                    autoClose: false
+                });
 
-            marker.bindPopup(popupContent).openPopup();
-            console.log('Camp detail map initialized successfully');
+            console.log('🚀 Finalizing map setup...');
+
+            // Final setup with delays to ensure proper rendering
+            setTimeout(() => {
+                detailMap.invalidateSize();
+                console.log('🔄 Map size invalidated');
+            }, 100);
+
+            setTimeout(() => {
+                marker.openPopup();
+                console.log('💬 Popup opened');
+            }, 300);
+
+            setTimeout(() => {
+                console.log('✅ CAMP DETAIL MAP SUCCESSFULLY INITIALIZED! 🎉');
+            }, 500);
+
         } catch (error) {
-            console.error('Error initializing camp detail map:', error);
+            console.error('❌ Critical error initializing detail map:', error);
+            const container = document.getElementById(mapId);
+            if (container) {
+                container.innerHTML = `
+                    <div class="alert alert-danger p-3 text-center">
+                        <i class="fas fa-exclamation-circle"></i><br>
+                        <strong>Chyba při načítání mapy</strong><br>
+                        <small class="text-muted">${error.message}</small>
+                    </div>
+                `;
+            }
         }
     });
 };
 
-// Pomocné funkce pro existující funkcionalitu
-function getMarkerIcon(type) {
-    let iconClass = 'fas fa-campground';
-    let color = '#28a745';
+// ========================================
+// HELPER FUNCTIONS
+// ========================================
 
-    switch (type?.toLowerCase()) {
-        case 'sportovní':
-            iconClass = 'fas fa-running';
-            color = '#007bff';
-            break;
-        case 'přírodní':
-            iconClass = 'fas fa-tree';
-            color = '#28a745';
-            break;
-        case 'vzdělávací':
-            iconClass = 'fas fa-graduation-cap';
-            color = '#6f42c1';
-            break;
-        default:
-            iconClass = 'fas fa-campground';
-            color = '#28a745';
+// Create popup content for overview map
+function createPopupContent(camp) {
+    if (!camp) return '<div class="text-danger">Chyba: Žádná data tábora</div>';
+
+    try {
+        const availabilityClass = getAvailabilityBadge(camp.availableSpots);
+        const availabilityText = getAvailabilityText(camp.availableSpots);
+
+        return `
+            <div class="popup-content" style="min-width: 250px;">
+                <h6 class="mb-2 fw-bold text-primary">${camp.name || 'Neznámý tábor'}</h6>
+                <p class="small text-muted mb-1">
+                    <i class="fas fa-map-marker-alt"></i> ${camp.location || 'Neznámá lokace'}
+                </p>
+                <p class="small mb-2">${camp.shortDescription || ''}</p>
+                <p class="fw-bold text-success mb-2">${(camp.price || 0).toLocaleString('cs-CZ')} Kč / týden</p>
+                <div class="d-flex gap-2 align-items-center">
+                    <a href="/tabor/${camp.id}" class="btn btn-primary btn-sm">
+                        <i class="fas fa-info-circle"></i> Detail
+                    </a>
+                    <span class="badge ${availabilityClass}">${availabilityText}</span>
+                </div>
+            </div>
+        `;
+    } catch (error) {
+        console.error('Error creating popup content:', error);
+        return '<div class="alert alert-warning">Chyba při načítání informací o táboře</div>';
     }
+}
+
+// Get marker icon for overview map based on camp type
+function getOverviewMarkerIcon(campType) {
+    const iconConfig = getCampTypeConfig(campType);
 
     return L.divIcon({
-        html: `<div style="background-color: ${color}; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"><i class="${iconClass}" style="font-size: 14px;"></i></div>`,
-        iconSize: [30, 30],
-        iconAnchor: [15, 15],
-        className: 'custom-div-icon'
+        html: `
+            <div class="overview-marker-icon" style="
+                background: ${iconConfig.color};
+                color: white;
+                border: 3px solid white;
+                border-radius: 50%;
+                width: 36px;
+                height: 36px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 16px;
+                box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+                transition: transform 0.2s;
+            ">
+                <i class="fas ${iconConfig.icon}"></i>
+            </div>
+        `,
+        iconSize: [36, 36],
+        iconAnchor: [18, 18],
+        popupAnchor: [0, -18],
+        className: 'camp-marker'
     });
 }
 
-function getAvailabilityBadge(availableSpots) {
-    return availableSpots > 5 ? 'bg-success' : availableSpots > 0 ? 'bg-warning' : 'bg-secondary';
+// Get special marker icon for detail maps
+function getDetailMarkerIcon() {
+    return L.divIcon({
+        html: `
+            <div class="detail-marker-icon" style="
+                background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+                border: 4px solid white;
+                border-radius: 50%;
+                width: 50px;
+                height: 50px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 20px;
+                color: white;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            ">
+                🏕️
+            </div>
+        `,
+        iconSize: [50, 50],
+        iconAnchor: [25, 25],
+        popupAnchor: [0, -25],
+        className: 'camp-detail-marker'
+    });
 }
 
-function getAvailabilityText(availableSpots) {
-    if (availableSpots === 0) return 'Obsazeno';
-    if (availableSpots === 1) return 'Poslední místo';
-    if (availableSpots <= 5) return `Posledních ${availableSpots} míst`;
-    return `${availableSpots} volných míst`;
-}
-    
-
-// Get marker icon based on camp type
-function getMarkerIcon(type) {
-    const iconMap = {
-        'adventure': { icon: 'fa-mountain', color: '#4CAF50' },
-        'sport': { icon: 'fa-futbol', color: '#FF9800' },
-        'creative': { icon: 'fa-palette', color: '#E91E63' },
-        'science': { icon: 'fa-flask', color: '#3F51B5' },
-        'water': { icon: 'fa-swimmer', color: '#00BCD4' }
+// Get camp type configuration
+function getCampTypeConfig(campType) {
+    const configs = {
+        'Sportovní': { icon: 'fa-futbol', color: '#FF6B35' },
+        'Přírodní': { icon: 'fa-tree', color: '#28A745' },
+        'Vzdělávací': { icon: 'fa-graduation-cap', color: '#6F42C1' },
+        'Dobrodružný': { icon: 'fa-mountain', color: '#17A2B8' },
+        'Kreativní': { icon: 'fa-palette', color: '#E91E63' },
+        'Vědecký': { icon: 'fa-microscope', color: '#3F51B5' },
+        'Vodní': { icon: 'fa-swimmer', color: '#00BCD4' },
+        'Technický': { icon: 'fa-cog', color: '#6C757D' },
+        'Jazykový': { icon: 'fa-comments', color: '#FD7E14' },
+        'Hudební': { icon: 'fa-music', color: '#D63384' }
     };
 
-    const config = iconMap[type] || { icon: 'fa-campground', color: '#2c5aa0' };
-
-    return L.divIcon({
-        html: `<div style="background: ${config.color}; color: white; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-size: 18px; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">
-            <i class="fas ${config.icon}"></i>
-        </div>`,
-        className: 'custom-div-icon',
-        iconSize: [40, 40],
-        iconAnchor: [20, 20],
-        popupAnchor: [0, -20]
-    });
+    return configs[campType] || { icon: 'fa-campground', color: '#007BFF' };
 }
 
-// Helper functions for availability badges
-function getAvailabilityBadge(spots) {
-    if (spots === 0) return 'bg-danger';
-    if (spots <= 5) return 'bg-warning text-dark';
+// Get availability badge class
+function getAvailabilityBadge(availableSpots) {
+    if (typeof availableSpots !== 'number') return 'bg-secondary';
+
+    if (availableSpots === 0) return 'bg-danger';
+    if (availableSpots <= 5) return 'bg-warning text-dark';
     return 'bg-success';
 }
 
-function getAvailabilityText(spots) {
-    if (spots === 0) return 'Obsazeno';
-    if (spots === 1) return 'Poslední místo!';
-    if (spots <= 5) return `Zbývá ${spots} míst`;
-    return `${spots} volných míst`;
+// Get availability text
+function getAvailabilityText(availableSpots) {
+    if (typeof availableSpots !== 'number') return 'Neznámá dostupnost';
+
+    if (availableSpots === 0) return 'Obsazeno';
+    if (availableSpots === 1) return 'Poslední místo!';
+    if (availableSpots <= 5) return `Posledních ${availableSpots} míst`;
+    return `${availableSpots} volných míst`;
 }
+
+// ========================================
+// CLEANUP FUNCTIONS
+// ========================================
+
+// Cleanup all maps (call when navigating away)
+window.cleanupAllMaps = function() {
+    console.log('🧹 Cleaning up all maps...');
+
+    try {
+        // Cleanup overview map
+        if (map) {
+            map.remove();
+            map = null;
+            console.log('✅ Overview map cleaned up');
+        }
+
+        // Cleanup all detail maps
+        Object.keys(detailMaps).forEach(mapId => {
+            if (detailMaps[mapId]) {
+                detailMaps[mapId].remove();
+                delete detailMaps[mapId];
+                console.log('✅ Detail map cleaned up:', mapId);
+            }
+        });
+
+        // Reset variables
+        markersGroup = null;
+        campMarkers = {};
+
+        console.log('✅ All maps cleaned up successfully');
+
+    } catch (error) {
+        console.error('❌ Error during map cleanup:', error);
+    }
+};
+
+// Cleanup specific detail map
+window.cleanupDetailMap = function(mapId) {
+    if (detailMaps[mapId]) {
+        detailMaps[mapId].remove();
+        delete detailMaps[mapId];
+        console.log('✅ Detail map cleaned up:', mapId);
+    }
+};
+
+// ========================================
+// ADDITIONAL UTILITY FUNCTIONS
+// ========================================
 
 // Modal functions
 window.showModal = function(modalId) {
@@ -364,7 +586,6 @@ window.hideModal = function(modalId) {
 
 // Alert function
 window.showAlert = function(message, type = 'info') {
-    // Create Bootstrap alert if possible
     if (typeof bootstrap !== 'undefined') {
         const alertHtml = `
             <div class="alert alert-${type} alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3" style="z-index: 9999;">
@@ -404,25 +625,31 @@ window.downloadFile = function(url, filename) {
     }
 };
 
-// Initialize on DOM ready
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM loaded');
-    console.log('Leaflet available:', typeof L !== 'undefined');
-    console.log('Bootstrap available:', typeof bootstrap !== 'undefined');
+// ========================================
+// CSS STYLES
+// ========================================
 
-    // Add custom CSS for map popups
+// Add custom CSS styles for maps
+function addMapStyles() {
     if (!document.getElementById('custom-map-styles')) {
         const style = document.createElement('style');
         style.id = 'custom-map-styles';
         style.textContent = `
+            /* Map container styles */
+            #campDetailMap, #map {
+                border-radius: 8px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }
+            
+            /* Leaflet popup styles */
             .leaflet-popup-content {
-                margin: 10px;
-                line-height: 1.4;
+                margin: 12px 15px;
+                line-height: 1.5;
+                font-family: inherit;
             }
             
             .popup-content h6 {
                 margin-bottom: 8px;
-                color: #2c5aa0;
                 font-weight: 600;
             }
             
@@ -436,42 +663,70 @@ document.addEventListener('DOMContentLoaded', function() {
                 padding: 0.25rem 0.5rem;
             }
 
-            .custom-div-icon {
+            /* Marker styles */
+            .camp-marker, .camp-detail-marker {
                 background: transparent !important;
                 border: none !important;
             }
             
+            .overview-marker-icon:hover {
+                transform: scale(1.1);
+            }
+            
+            /* Leaflet container styles */
             .leaflet-container {
                 font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                border-radius: 15px;
             }
 
             .leaflet-popup-content-wrapper {
-                border-radius: 10px;
-                box-shadow: 0 3px 14px rgba(0,0,0,0.2);
+                border-radius: 8px;
+                box-shadow: 0 3px 15px rgba(0,0,0,0.2);
             }
 
             .leaflet-popup-tip {
                 background: white;
             }
             
-            .custom-camp-icon {
-                background: transparent !important;
-                border: none !important;
-            }
-            
-            /* Fix for Leaflet controls */
+            /* Leaflet controls */
             .leaflet-control-zoom {
-                border: 2px solid rgba(0,0,0,0.2) !important;
-                border-radius: 5px !important;
+                border: none !important;
+                border-radius: 6px !important;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.15) !important;
             }
             
             .leaflet-control-zoom-in,
             .leaflet-control-zoom-out {
                 font-size: 18px !important;
-                line-height: 26px !important;
+                line-height: 28px !important;
+                width: 30px !important;
+                height: 30px !important;
+            }
+            
+            .leaflet-control-attribution {
+                background: rgba(255, 255, 255, 0.8) !important;
+                border-radius: 4px !important;
+                font-size: 11px !important;
             }
         `;
         document.head.appendChild(style);
     }
+}
+
+// ========================================
+// EVENT LISTENERS
+// ========================================
+
+// Cleanup maps when page unloads
+window.addEventListener('beforeunload', function() {
+    window.cleanupAllMaps();
 });
+
+// Handle Blazor navigation if available
+if (typeof Blazor !== 'undefined') {
+    Blazor.addEventListener('enhancedload', () => {
+        console.log('🔄 Blazor enhanced navigation detected');
+        // Maps will be reinitialized by individual pages
+    });
+}
+
+console.log('✅ Complete Site.js loaded successfully - Camp Map System Ready! 🗺️🏕️');

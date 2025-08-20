@@ -1,0 +1,98 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Authorization
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+@inherits LayoutComponentBase
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>@(PageTitle ?? "Admin Panel - Letní Tábory Plzeň")</PageTitle>
+
+<div class="admin-layout">
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/admin">
+                <i class="fas fa-cogs me-2"></i>Admin Panel
+            </a>
+            
+            <div class="navbar-nav me-auto">
+                <a class="nav-link" href="/admin">Dashboard</a>
+                <a class="nav-link" href="/admin/camps">Tábory</a>
+                <a class="nav-link" href="/admin/campers">Účastníci</a>
+                <a class="nav-link" href="/admin/photos">Fotky</a>
+                <a class="nav-link" href="/admin/updates">Zprávy</a>
+                <a class="nav-link" href="/admin/users">Uživatelé</a>
+            </div>
+            
+            <div class="navbar-nav">
+                <a class="nav-link" href="/" target="_blank">Návštěvnická část</a>
+                <div class="nav-item dropdown">
+                    <AuthorizeView>
+                        <Authorized>
+                            <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+                                @context.User.Identity?.Name
+                            </a>
+                            <ul class="dropdown-menu">
+                                <li>
+                                    <form method="post" action="/Account/logout">
+                                        <button class="dropdown-item" type="submit">Odhlásit se</button>
+                                    </form>
+                                </li>
+                            </ul>
+                        </Authorized>
+                    </AuthorizeView>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Breadcrumb -->
+    <div class="bg-light py-2">
+        <div class="container-fluid">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-0">
+                    <li class="breadcrumb-item"><a href="/admin">Admin</a></li>
+                    <CascadingValue Value="BreadcrumbTitle" Name="BreadcrumbTitle">
+                        @if (!string.IsNullOrEmpty(BreadcrumbTitle))
+                        {
+                            <li class="breadcrumb-item active">@BreadcrumbTitle</li>
+                        }
+                    </CascadingValue>
+                </ol>
+            </nav>
+        </div>
+    </div>
+
+    <!-- Content -->
+    <div class="admin-content">        
+        <main class="container-fluid py-4">
+            @Body
+        </main>
+    </div>
+</div>
+
+<style>
+.admin-layout {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.admin-content {
+    flex: 1;
+}
+
+.navbar-dark .navbar-nav .nav-link {
+    color: rgba(255,255,255,.75);
+}
+
+.navbar-dark .navbar-nav .nav-link:hover,
+.navbar-dark .navbar-nav .nav-link.active {
+    color: rgba(255,255,255,1);
+}
+</style>
+
+@code {
+    [CascadingParameter] public string? PageTitle { get; set; }
+    [CascadingParameter] public string? BreadcrumbTitle { get; set; }
+}

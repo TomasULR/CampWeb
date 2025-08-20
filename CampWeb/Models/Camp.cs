@@ -39,7 +39,8 @@ public class Camp
     
     // This will be stored as JSONB in PostgreSQL
     public List<string> Activities { get; set; } = new();
-    
+    [Required]
+    public int Capacity { get; set; }
     [Required]
     public DateTime StartDate { get; set; }
     

@@ -1,0 +1,697 @@
+@page "/admin/photos"
+@page "/admin/photos/{campId:int}"
+@using System.ComponentModel.DataAnnotations
+@using CampWeb.Models
+@using CampWeb.Services
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@inject ICampService CampService
+@inject IPhotoService PhotoService
+@inject IJSRuntime JSRuntime
+@inject ILogger<AdminPhotos> Logger
+@attribute [Authorize(Roles = "Admin,SuperAdmin")]
+@layout AdminLayout
+@rendermode InteractiveServer
+
+<PageTitle>Správa fotek - Admin Panel</PageTitle>
+
+<CascadingValue Value="@("Správa fotek")" Name="BreadcrumbTitle">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-0">Správa fotek</h1>
+                    <p class="text-muted">Nahrávejte a spravujte fotky z táborů</p>
+                </div>
+                <div>
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#uploadModal">
+                        <i class="fas fa-upload me-2"></i>
+                        Nahrát fotky
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Camp Selection and Statistics -->
+    <div class="row mb-4">
+        <div class="col-lg-8 mb-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <label class="form-label">Vyberte tábor</label>
+                            <select class="form-select" @bind="selectedCampId" @bind:event="onchange" @bind:after="LoadPhotos">
+                                <option value="">Všechny tábory</option>
+                                @foreach (var camp in camps)
+                                {
+                                    <option value="@camp.Id">
+                                        @camp.Name (@camp.StartDate.ToString("dd.MM.yyyy"))
+                                    </option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Hledat</label>
+                            <input type="text" class="form-control" placeholder="Popis, název souboru..." 
+                                   @bind="searchTerm" @bind:event="oninput" @bind:after="FilterPhotos" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4 mb-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center">
+                    <i class="fas fa-images text-primary fs-1 mb-2"></i>
+                    <h4 class="mb-0">@filteredPhotos.Count</h4>
+                    <div class="text-muted">
+                        @(string.IsNullOrEmpty(selectedCampId) ? "fotek celkem" : "fotek z tábora")
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Photos Grid -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    Fotky
+                    @if (!string.IsNullOrEmpty(selectedCampId))
+                    {
+                        var selectedCamp = camps.FirstOrDefault(c => c.Id.ToString() == selectedCampId);
+                        if (selectedCamp != null)
+                        {
+                            <span class="text-muted">- @selectedCamp.Name</span>
+                        }
+                    }
+                </h5>
+                <div class="btn-group" role="group">
+                    <button class="btn @(viewMode == "grid" ? "btn-primary" : "btn-outline-primary")" 
+                            @onclick="() => SetViewMode(grid)">
+                        <i class="fas fa-th"></i>
+                    </button>
+                    <button class="btn @(viewMode == "list" ? "btn-primary" : "btn-outline-primary")" 
+                            @onclick="() => SetViewMode(list)">
+                        <i class="fas fa-list"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="card-body">
+            @if (isLoading)
+            {
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Načítání...</span>
+                    </div>
+                    <p class="mt-2 text-muted">Načítání fotek...</p>
+                </div>
+            }
+            else if (!filteredPhotos.Any())
+            {
+                <div class="text-center py-5">
+                    <i class="fas fa-camera text-muted display-1 mb-3"></i>
+                    <h5 class="text-muted">Žádné fotky</h5>
+                    <p class="text-muted">
+                        @if (allPhotos.Any())
+                        {
+                            @:Žádná fotka neodpovídá vašemu vyhledávání.
+                        }
+                        else
+                        {
+                            @:Zatím nebyly nahrány žádné fotky.
+                        }
+                    </p>
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#uploadModal">
+                        <i class="fas fa-upload me-2"></i>
+                        Nahrát první fotky
+                    </button>
+                </div>
+            }
+            else
+            {
+                @if (viewMode == "grid")
+                {
+                    <!-- Grid View -->
+                    <div class="row g-3">
+                        @foreach (var photo in filteredPhotos)
+                        {
+                            <div class="col-xl-3 col-lg-4 col-md-6 col-sm-12">
+                                <div class="card photo-card border-0 shadow-sm">
+                                    <div class="photo-container position-relative">
+                                        <img src="@photo.FileName" alt="@photo.Description" 
+                                             class="card-img-top photo-thumbnail" @onclick="() => OpenLightbox(photo)" />
+                                        <div class="photo-overlay">
+                                            <div class="d-flex gap-2">
+                                                <button class="btn btn-sm btn-light" @onclick="() => OpenLightbox(photo)" title="Zobrazit">
+                                                    <i class="fas fa-eye"></i>
+                                                </button>
+                                                <button class="btn btn-sm btn-light" @onclick="() => EditPhoto(photo)" title="Upravit">
+                                                    <i class="fas fa-edit"></i>
+                                                </button>
+                                                <button class="btn btn-sm btn-danger" @onclick="() => DeletePhoto(photo)" title="Smazat">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="card-body p-3">
+                                        <div class="mb-2">
+                                            <small class="text-muted">@GetCampName(photo.CampId)</small>
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(photo.Description))
+                                        {
+                                            <p class="card-text small mb-2">@photo.Description</p>
+                                        }
+                                        <small class="text-muted">
+                                            <i class="fas fa-calendar me-1"></i>
+                                            @photo.UploadDate.ToString("dd.MM.yyyy HH:mm")
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <!-- List View -->
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th width="100">Náhled</th>
+                                    <th>Popis</th>
+                                    <th>Tábor</th>
+                                    <th>Datum nahrání</th>
+                                    <th width="150">Akce</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var photo in filteredPhotos)
+                                {
+                                    <tr>
+                                        <td>
+                                            <img src="@photo.FileName" alt="@photo.Description" 
+                                                 class="img-thumbnail" style="width: 60px; height: 60px; object-fit: cover; cursor: pointer;"
+                                                 @onclick="() => OpenLightbox(photo)" />
+                                        </td>
+                                        <td>
+                                            @if (!string.IsNullOrEmpty(photo.Description))
+                                            {
+                                                @photo.Description
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">Bez popisu</span>
+                                            }
+                                        </td>
+                                        <td>@GetCampName(photo.CampId)</td>
+                                        <td>@photo.UploadDate.ToString("dd.MM.yyyy HH:mm")</td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm">
+                                                <button class="btn btn-outline-primary" @onclick="() => OpenLightbox(photo)" title="Zobrazit">
+                                                    <i class="fas fa-eye"></i>
+                                                </button>
+                                                <button class="btn btn-outline-secondary" @onclick="() => EditPhoto(photo)" title="Upravit">
+                                                    <i class="fas fa-edit"></i>
+                                                </button>
+                                                <button class="btn btn-outline-danger" @onclick="() => DeletePhoto(photo)" title="Smazat">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+
+    <!-- Upload Modal -->
+    <div class="modal fade" id="uploadModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Nahrát fotky</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <EditForm Model="uploadForm" OnValidSubmit="HandleFileUpload">
+                        <DataAnnotationsValidator />
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Vyberte tábor *</label>
+                            <InputSelect @bind-Value="uploadForm.CampId" class="form-select">
+                                <option value="">Vyberte tábor</option>
+                                @foreach (var camp in camps.Where(c => c.StartDate >= DateTime.Now.AddDays(-30)))
+                                {
+                                    <option value="@camp.Id">@camp.Name (@camp.StartDate.ToString("dd.MM.yyyy"))</option>
+                                }
+                            </InputSelect>
+                            <ValidationMessage For="@(() => uploadForm.CampId)" class="text-danger small" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Fotky *</label>
+                            <InputFile OnChange="HandleFilesSelected" multiple accept="image/*" class="form-control" />
+                            <div class="form-text">Můžete vybrat více fotek najednou. Podporované formáty: JPG, PNG, GIF</div>
+                            <ValidationMessage For="@(() => uploadForm.Files)" class="text-danger small" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Popis (volitelné)</label>
+                            <InputTextArea @bind-Value="uploadForm.Description" class="form-control" rows="3" 
+                                           placeholder="Krátký popis fotek nebo události..." />
+                        </div>
+
+                        <!-- Preview selected files -->
+                        @if (selectedFiles?.Any() == true)
+                        {
+                            <div class="mb-3">
+                                <h6>Vybrané soubory (@selectedFiles.Count()):</h6>
+                                <div class="row g-2">
+                                    @foreach (var file in selectedFiles.Take(6))
+                                    {
+                                        <div class="col-md-2">
+                                            <div class="text-center">
+                                                <div class="bg-light p-2 rounded">
+                                                    <i class="fas fa-image text-muted fs-4"></i>
+                                                </div>
+                                                <small class="text-muted">@file.Name</small>
+                                            </div>
+                                        </div>
+                                    }
+                                    @if (selectedFiles.Count() > 6)
+                                    {
+                                        <div class="col-md-2">
+                                            <div class="text-center">
+                                                <div class="bg-light p-2 rounded">
+                                                    <i class="fas fa-plus text-muted fs-4"></i>
+                                                </div>
+                                                <small class="text-muted">+@(selectedFiles.Count() - 6) dalších</small>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Zrušit</button>
+                            @if (isUploading)
+                            {
+                                <button class="btn btn-primary" type="button" disabled>
+                                    <span class="spinner-border spinner-border-sm me-2"></span>
+                                    Nahrávám...
+                                </button>
+                            }
+                            else
+                            {
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-upload me-2"></i>Nahrát fotky
+                                </button>
+                            }
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Photo Lightbox Modal -->
+    @if (selectedPhoto != null)
+    {
+        <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.9);">
+            <div class="modal-dialog modal-xl modal-dialog-centered">
+                <div class="modal-content bg-transparent border-0">
+                    <div class="modal-header border-0">
+                        <div class="text-white">
+                            <h5>@(!string.IsNullOrEmpty(selectedPhoto.Description) ? selectedPhoto.Description : "Foto z tábora")</h5>
+                            <small>@GetCampName(selectedPhoto.CampId) - @selectedPhoto.UploadDate.ToString("dd.MM.yyyy HH:mm")</small>
+                        </div>
+                        <button type="button" class="btn-close btn-close-white" @onclick="CloseLightbox"></button>
+                    </div>
+                    <div class="modal-body text-center p-0">
+                        <img src="@selectedPhoto.FileName" alt="@selectedPhoto.Description" 
+                             class="img-fluid rounded" style="max-height: 80vh;" />
+                    </div>
+                    <div class="modal-footer border-0 justify-content-center">
+                        <button class="btn btn-outline-light" @onclick="() => EditPhoto(selectedPhoto)">
+                            <i class="fas fa-edit me-2"></i>Upravit
+                        </button>
+                        <button class="btn btn-outline-danger" @onclick="() => DeletePhoto(selectedPhoto)">
+                            <i class="fas fa-trash me-2"></i>Smazat
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Edit Photo Modal -->
+    @if (editingPhoto != null)
+    {
+        <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Upravit fotku</h5>
+                        <button type="button" class="btn-close" @onclick="CancelEdit"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3 text-center">
+                            <img src="@editingPhoto.FileName" alt="@editingPhoto.Description" 
+                                 class="img-fluid rounded" style="max-height: 200px;" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Popis</label>
+                            <textarea class="form-control" rows="3" @bind="editingPhoto.Description" 
+                                      placeholder="Zadejte popis fotky..."></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Tábor</label>
+                            <select class="form-select" @bind="editingPhoto.CampId">
+                                @foreach (var camp in camps)
+                                {
+                                    <option value="@camp.Id">@camp.Name (@camp.StartDate.ToString("dd.MM.yyyy"))</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" @onclick="CancelEdit">Zrušit</button>
+                        <button type="button" class="btn btn-primary" @onclick="SavePhotoEdit">
+                            <i class="fas fa-save me-2"></i>Uložit
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</CascadingValue>
+
+@code {
+    private const string list = "list";
+    private const string grid = "grid";
+    [Parameter] public int? CampId { get; set; }
+
+    private List<Camp> camps = new();
+    private List<CampPhoto> allPhotos = new();
+    private List<CampPhoto> filteredPhotos = new();
+    private CampPhoto? selectedPhoto;
+    private CampPhoto? editingPhoto;
+    private IEnumerable<IBrowserFile>? selectedFiles;
+    
+    private string selectedCampId = "";
+    private string searchTerm = "";
+    private string viewMode = "grid";
+    private bool isLoading = true;
+    private bool isUploading = false;
+
+    private UploadFormModel uploadForm = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+        
+        if (CampId.HasValue)
+        {
+            selectedCampId = CampId.Value.ToString();
+            await LoadPhotos();
+        }
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            isLoading = true;
+            camps = await CampService.GetAllCampsAsync();
+            await LoadPhotos();
+            
+            Logger.LogInformation("Loaded {CampCount} camps", camps.Count);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading photos data");
+            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se načíst data", "error");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadPhotos()
+    {
+        try
+        {
+            // Load photos from all camps or specific camp
+            allPhotos = camps.SelectMany(c => c.Photos ?? Enumerable.Empty<CampPhoto>()).ToList();
+            
+            await FilterPhotos();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading photos");
+        }
+    }
+
+    private async Task FilterPhotos()
+    {
+        var filtered = allPhotos.AsEnumerable();
+
+        // Filter by camp
+        if (!string.IsNullOrEmpty(selectedCampId) && int.TryParse(selectedCampId, out int campId))
+        {
+            filtered = filtered.Where(p => p.CampId == campId);
+        }
+
+        // Filter by search term
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            var term = searchTerm.ToLower();
+            filtered = filtered.Where(p =>
+                p.Description?.ToLower().Contains(term) == true ||
+                p.FileName.ToLower().Contains(term));
+        }
+
+        filteredPhotos = filtered.OrderByDescending(p => p.UploadDate).ToList();
+        await Task.CompletedTask;
+    }
+
+    private async Task HandleFilesSelected(InputFileChangeEventArgs e)
+    {
+        selectedFiles = e.GetMultipleFiles(20); // Max 20 files
+        uploadForm.Files = selectedFiles.ToList();
+        await Task.CompletedTask;
+    }
+
+    private async Task HandleFileUpload()
+    {
+        if (selectedFiles?.Any() != true)
+        {
+            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Vyberte prosím alespoň jednu fotku", "error");
+            return;
+        }
+
+        try
+        {
+            isUploading = true;
+            
+            // Simulate upload process
+            await Task.Delay(2000);
+            
+            // In real implementation, upload files and save to database
+            foreach (var file in selectedFiles)
+            {
+                var photo = new CampPhoto
+                {
+                    CampId = uploadForm.CampId,
+                    FileName = $"/uploads/camps/{uploadForm.CampId}/{file.Name}",
+                    Description = uploadForm.Description ?? "",
+                    UploadDate = DateTime.Now,
+                    IsPublic = true
+                };
+                
+                allPhotos.Add(photo);
+            }
+
+            await LoadPhotos();
+            await JSRuntime.InvokeVoidAsync("showToast", "Úspěch", $"{selectedFiles.Count()} fotek bylo nahráno", "success");
+            await JSRuntime.InvokeVoidAsync("hideModal", "uploadModal");
+            
+            // Reset form
+            uploadForm = new UploadFormModel();
+            selectedFiles = null;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error uploading photos");
+            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se nahrát fotky", "error");
+        }
+        finally
+        {
+            isUploading = false;
+        }
+    }
+
+    private void SetViewMode(string mode)
+    {
+        viewMode = mode;
+    }
+
+    private void OpenLightbox(CampPhoto photo)
+    {
+        selectedPhoto = photo;
+    }
+
+    private void CloseLightbox()
+    {
+        selectedPhoto = null;
+    }
+
+    private void EditPhoto(CampPhoto photo)
+    {
+        editingPhoto = new CampPhoto
+        {
+            Id = photo.Id,
+            CampId = photo.CampId,
+            FileName = photo.FileName,
+            Description = photo.Description,
+            UploadDate = photo.UploadDate,
+            IsPublic = photo.IsPublic
+        };
+        selectedPhoto = null; // Close lightbox if open
+    }
+
+    private void CancelEdit()
+    {
+        editingPhoto = null;
+    }
+
+    private async Task SavePhotoEdit()
+    {
+        if (editingPhoto != null)
+        {
+            try
+            {
+                // In real implementation, update photo in database
+                var originalPhoto = allPhotos.FirstOrDefault(p => p.Id == editingPhoto.Id);
+                if (originalPhoto != null)
+                {
+                    originalPhoto.Description = editingPhoto.Description;
+                    originalPhoto.CampId = editingPhoto.CampId;
+                }
+
+                await FilterPhotos();
+                await JSRuntime.InvokeVoidAsync("showToast", "Úspěch", "Fotka byla aktualizována", "success");
+                editingPhoto = null;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error saving photo edit");
+                await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se uložit změny", "error");
+            }
+        }
+    }
+
+    private async Task DeletePhoto(CampPhoto photo)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
+            "Opravdu chcete tuto fotku smazat? Tato akce je nevratná.");
+        
+        if (confirmed)
+        {
+            try
+            {
+                // In real implementation, delete photo from database and file system
+                allPhotos.Remove(photo);
+                await FilterPhotos();
+                
+                await JSRuntime.InvokeVoidAsync("showToast", "Úspěch", "Fotka byla smazána", "success");
+                
+                // Close modals if the deleted photo was selected
+                if (selectedPhoto?.Id == photo.Id) selectedPhoto = null;
+                if (editingPhoto?.Id == photo.Id) editingPhoto = null;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error deleting photo");
+                await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se smazat fotku", "error");
+            }
+        }
+    }
+
+    private string GetCampName(int campId)
+    {
+        return camps.FirstOrDefault(c => c.Id == campId)?.Name ?? "Neznámý tábor";
+    }
+
+    public class UploadFormModel
+    {
+        [Required(ErrorMessage = "Vyberte tábor")]
+        public int CampId { get; set; }
+
+        [Required(ErrorMessage = "Vyberte alespoň jednu fotku")]
+        public List<IBrowserFile> Files { get; set; } = new();
+
+        public string? Description { get; set; }
+    }
+}
+
+<style>
+    .photo-card {
+        transition: transform 0.2s ease-in-out;
+        overflow: hidden;
+    }
+
+    .photo-card:hover {
+        transform: translateY(-2px);
+    }
+
+    .photo-container {
+        position: relative;
+        overflow: hidden;
+    }
+
+    .photo-thumbnail {
+        height: 200px;
+        object-fit: cover;
+        cursor: pointer;
+        transition: transform 0.3s ease;
+    }
+
+    .photo-thumbnail:hover {
+        transform: scale(1.05);
+    }
+
+    .photo-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    }
+
+    .photo-card:hover .photo-overlay {
+        opacity: 1;
+    }
+
+    .modal.show {
+        display: block !important;
+    }
+</style>

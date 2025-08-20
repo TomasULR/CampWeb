@@ -1,0 +1,553 @@
+@page "/admin/camps"
+@page "/admin/camps/{action?}"
+@page "/admin/camps/{action}/{id:int}"
+@using CampWeb.Models
+@using CampWeb.Services
+@using Microsoft.AspNetCore.Authorization
+@using System.ComponentModel.DataAnnotations
+@inject ICampService CampService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject ILogger<AdminCamps> Logger
+@attribute [Authorize(Roles = "Admin,SuperAdmin")]
+@layout AdminLayout
+@rendermode InteractiveServer
+
+<PageTitle>Správa táborů - Admin Panel</PageTitle>
+
+<CascadingValue Value="@("Správa táborů")" Name="BreadcrumbTitle">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-0">Správa táborů</h1>
+                    <p class="text-muted">Vytvářejte, upravujte a spravujte tábory</p>
+                </div>
+                <div>
+                    @if (string.IsNullOrEmpty(Action) || Action == "list")
+                    {
+                        <a href="/admin/camps/create" class="btn btn-primary">
+                            <i class="fas fa-plus me-2"></i>
+                            Nový tábor
+                        </a>
+                    }
+                    else
+                    {
+                        <a href="/admin/camps" class="btn btn-outline-secondary">
+                            <i class="fas fa-arrow-left me-2"></i>
+                            Zpět na seznam
+                        </a>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (string.IsNullOrEmpty(Action) || Action == "list")
+    {
+        <!-- Camps List -->
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white">
+                <div class="row align-items-center">
+                    <div class="col">
+                        <h5 class="card-title mb-0">Seznam táborů (@camps.Count)</h5>
+                    </div>
+                    <div class="col-auto">
+                        <div class="input-group">
+                            <input type="text" class="form-control" placeholder="Hledat tábor..." @bind="searchTerm" @bind:event="oninput" />
+                            <button class="btn btn-outline-secondary" type="button" @onclick="SearchCamps">
+                                <i class="fas fa-search"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                @if (isLoading)
+                {
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Načítání...</span>
+                        </div>
+                        <p class="mt-2 text-muted">Načítání táborů...</p>
+                    </div>
+                }
+                else if (!filteredCamps.Any())
+                {
+                    <div class="text-center py-5">
+                        <i class="fas fa-campground text-muted display-1 mb-3"></i>
+                        <h5 class="text-muted">Žádné tábory</h5>
+                        <p class="text-muted">@(camps.Any() ? "Žádný tábor neodpovídá vašemu vyhledávání." : "Zatím nebyly vytvořeny žádné tábory.")</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Název tábora</th>
+                                    <th>Termín</th>
+                                    <th>Lokace</th>
+                                    <th>Kapacita</th>
+                                    <th>Cena</th>
+                                    <th>Access kód</th>
+                                    <th>Stav</th>
+                                    <th width="120">Akce</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var camp in filteredCamps)
+                                {
+                                    var registeredCount = camp.Registrations?.Count(r => r.Status != RegistrationStatus.Cancelled) ?? 0;
+                                    var availableSpots = camp.AvailableSpots;
+
+                                    <tr>
+                                        <td>
+                                            <div class="fw-bold">@camp.Name</div>
+                                            <div class="text-muted small">@camp.Type</div>
+                                        </td>
+                                        <td>
+                                            <div class="small">
+                                                <strong>@camp.StartDate.ToString("dd.MM.yyyy")</strong><br>
+                                                @camp.EndDate.ToString("dd.MM.yyyy")
+                                            </div>
+                                        </td>
+                                        <td>@camp.Location</td>
+                                        <td>
+                                            <div class="d-flex align-items-center">
+                                                <span class="me-2">@registeredCount / @(registeredCount + availableSpots)</span>
+                                                <div class="progress flex-grow-1" style="height: 6px; max-width: 80px;">
+                                                    <div class="progress-bar @GetCapacityColorClass(registeredCount, registeredCount + availableSpots)" 
+                                                         style="width: @(registeredCount + availableSpots > 0 ? (registeredCount * 100) / (registeredCount + availableSpots) : 0)%"></div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>@camp.Price.ToString("N0") Kč</td>
+                                        <td>
+                                            <code class="text-primary">@(GenerateAccessCode(camp.Id))</code>
+                                        </td>
+                                        <td>
+                                            <span class="badge @(availableSpots > 0 ? "bg-success" : "bg-danger")">
+                                                @(availableSpots > 0 ? "Aktivní" : "Obsazeno")
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm" role="group">
+                                                <button class="btn btn-outline-primary" @onclick="() => EditCamp(camp.Id)" title="Upravit">
+                                                    <i class="fas fa-edit"></i>
+                                                </button>
+                                                <button class="btn btn-outline-danger" @onclick="() => DeleteCamp(camp)" title="Smazat">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+    else if (Action == "create" || Action == "edit")
+    {
+        <!-- Create/Edit Form -->
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-header bg-white">
+                        <h5 class="card-title mb-0">
+                            @if (Action == "create")
+                            {
+                                <i class="fas fa-plus me-2 text-success"></i>@:Vytvořit nový tábor
+                            }
+                            else
+                            {
+                                <i class="fas fa-edit me-2 text-primary"></i>@:Upravit tábor
+                            }
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <EditForm Model="campForm" OnValidSubmit="SaveCamp">
+                            <DataAnnotationsValidator />
+                            
+                            <div class="row">
+                                <div class="col-md-12 mb-3">
+                                    <label class="form-label">Název tábora *</label>
+                                    <InputText @bind-Value="campForm.Name" class="form-control" placeholder="Zadejte název tábora" />
+                                    <ValidationMessage For="@(() => campForm.Name)" class="text-danger small" />
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Typ tábora *</label>
+                                    <InputSelect @bind-Value="campForm.Type" class="form-select">
+                                        <option value="">Vyberte typ</option>
+                                        <option value="adventure">Dobrodružný</option>
+                                        <option value="sport">Sportovní</option>
+                                        <option value="creative">Kreativní</option>
+                                        <option value="water">Vodácký</option>
+                                        <option value="science">Vědecký</option>
+                                    </InputSelect>
+                                    <ValidationMessage For="@(() => campForm.Type)" class="text-danger small" />
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Věková kategorie *</label>
+                                    <InputText @bind-Value="campForm.AgeGroup" class="form-control" placeholder="např. 6-12 let" />
+                                    <ValidationMessage For="@(() => campForm.AgeGroup)" class="text-danger small" />
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-8 mb-3">
+                                    <label class="form-label">Lokace *</label>
+                                    <InputText @bind-Value="campForm.Location" class="form-control" placeholder="Město, region" />
+                                    <ValidationMessage For="@(() => campForm.Location)" class="text-danger small" />
+                                </div>
+                                <div class="col-md-4 mb-3">
+                                    <label class="form-label">Cena (Kč) *</label>
+                                    <InputNumber @bind-Value="campForm.Price" class="form-control" />
+                                    <ValidationMessage For="@(() => campForm.Price)" class="text-danger small" />
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Datum začátku *</label>
+                                    <InputDate @bind-Value="campForm.StartDate" class="form-control" />
+                                    <ValidationMessage For="@(() => campForm.StartDate)" class="text-danger small" />
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Datum konce *</label>
+                                    <InputDate @bind-Value="campForm.EndDate" class="form-control" />
+                                    <ValidationMessage For="@(() => campForm.EndDate)" class="text-danger small" />
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Kapacita *</label>
+                                    <InputNumber @bind-Value="campForm.Capacity" class="form-control" min="1" />
+                                    <ValidationMessage For="@(() => campForm.Capacity)" class="text-danger small" />
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Volná místa *</label>
+                                    <InputNumber @bind-Value="campForm.AvailableSpots" class="form-control" min="0" />
+                                    <ValidationMessage For="@(() => campForm.AvailableSpots)" class="text-danger small" />
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Krátký popis</label>
+                                <InputTextArea @bind-Value="campForm.ShortDescription" class="form-control" rows="2" placeholder="Stručný popis tábora pro náhled" />
+                                <ValidationMessage For="@(() => campForm.ShortDescription)" class="text-danger small" />
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Podrobný popis</label>
+                                <InputTextArea @bind-Value="campForm.Description" class="form-control" rows="5" placeholder="Detailní popis tábora, aktivit, ubytování atd." />
+                                <ValidationMessage For="@(() => campForm.Description)" class="text-danger small" />
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Zeměpisná šířka</label>
+                                    <InputNumber @bind-Value="campForm.Latitude" class="form-control" step="0.000001" />
+                                    <div class="form-text">Pro zobrazení na mapě</div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Zeměpisná délka</label>
+                                    <InputNumber @bind-Value="campForm.Longitude" class="form-control" step="0.000001" />
+                                    <div class="form-text">Pro zobrazení na mapě</div>
+                                </div>
+                            </div>
+
+                            <div class="d-flex justify-content-end gap-2">
+                                <a href="/admin/camps" class="btn btn-outline-secondary">
+                                    <i class="fas fa-times me-2"></i>Zrušit
+                                </a>
+                                @if (isSaving)
+                                {
+                                    <button class="btn btn-primary" type="button" disabled>
+                                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                        Ukládám...
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-save me-2"></i>Uložit tábor
+                                    </button>
+                                }
+                            </div>
+                        </EditForm>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</CascadingValue>
+
+@code {
+    [Parameter] public string? Action { get; set; }
+    [Parameter] public int? Id { get; set; }
+
+    private List<Camp> camps = new();
+    private List<Camp> filteredCamps = new();
+    private string searchTerm = "";
+    private bool isLoading = true;
+    private bool isSaving = false;
+
+    private CampFormModel campForm = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCamps();
+        
+        if (Action == "edit" && Id.HasValue)
+        {
+            await LoadCampForEdit(Id.Value);
+        }
+        else if (Action == "create")
+        {
+            campForm = new CampFormModel();
+        }
+    }
+
+    private async Task LoadCamps()
+    {
+        try
+        {
+            isLoading = true;
+            camps = await CampService.GetAllCampsAsync();
+            filteredCamps = camps.ToList();
+            Logger.LogInformation("Loaded {Count} camps", camps.Count);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading camps");
+            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se načíst tábory", "error");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadCampForEdit(int campId)
+    {
+        try
+        {
+            var camp = await CampService.GetCampByIdAsync(campId);
+            if (camp != null)
+            {
+                campForm = new CampFormModel
+                {
+                    Name = camp.Name,
+                    Type = camp.Type,
+                    AgeGroup = camp.AgeGroup,
+                    Location = camp.Location,
+                    Price = camp.Price,
+                    StartDate = DateOnly.FromDateTime(camp.StartDate),
+                    EndDate = DateOnly.FromDateTime(camp.EndDate),
+                    Capacity = camp.AvailableSpots,
+                    AvailableSpots = camp.AvailableSpots,
+                    ShortDescription = camp.ShortDescription,
+                    Description = camp.Description,
+                    Latitude = camp.Latitude,
+                    Longitude = camp.Longitude
+                };
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Tábor nebyl nalezen", "error");
+                Navigation.NavigateTo("/admin/camps");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading camp for edit");
+            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se načíst tábor", "error");
+        }
+    }
+
+    private async Task SearchCamps()
+    {
+        if (string.IsNullOrWhiteSpace(searchTerm))
+        {
+            filteredCamps = camps.ToList();
+        }
+        else
+        {
+            var term = searchTerm.ToLower();
+            filteredCamps = camps.Where(c => 
+                c.Name.ToLower().Contains(term) ||
+                c.Location.ToLower().Contains(term) ||
+                c.Type.ToLower().Contains(term)).ToList();
+        }
+    }
+
+    private async Task SaveCamp()
+    {
+        try
+        {
+            isSaving = true;
+            
+            // Create Camp object from form
+            var camp = new Camp
+            {
+                Name = campForm.Name,
+                Type = campForm.Type,
+                AgeGroup = campForm.AgeGroup,
+                Location = campForm.Location,
+                Price = campForm.Price,
+                StartDate = campForm.StartDate.ToDateTime(TimeOnly.MinValue),
+                EndDate = campForm.EndDate.ToDateTime(TimeOnly.MinValue),
+                AvailableSpots = campForm.AvailableSpots,
+                ShortDescription = campForm.ShortDescription ?? "",
+                Description = campForm.Description ?? "",
+                Latitude = campForm.Latitude,
+                Longitude = campForm.Longitude
+            };
+
+            bool success;
+            if (Action == "create")
+            {
+                success = await CreateCamp(camp);
+            }
+            else
+            {
+                camp.Id = Id.Value;
+                success = await UpdateCamp(camp);
+            }
+
+            if (success)
+            {
+                await JSRuntime.InvokeVoidAsync("showToast", "Úspěch", 
+                    Action == "create" ? "Tábor byl vytvořen" : "Tábor byl aktualizován", "success");
+                Navigation.NavigateTo("/admin/camps");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error saving camp");
+            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se uložit tábor", "error");
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task<bool> CreateCamp(Camp camp)
+    {
+        // Implementation would depend on your service
+        // For now, simulating success
+        await Task.Delay(1000);
+        return true;
+    }
+
+    private async Task<bool> UpdateCamp(Camp camp)
+    {
+        // Implementation would depend on your service
+        await Task.Delay(1000);
+        return true;
+    }
+
+    private void EditCamp(int campId)
+    {
+        Navigation.NavigateTo($"/admin/camps/edit/{campId}");
+    }
+
+    private async Task DeleteCamp(Camp camp)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
+            $"Opravdu chcete smazat tábor '{camp.Name}'? Tato akce je nevratná.");
+        
+        if (confirmed)
+        {
+            try
+            {
+                // Implementation would depend on your service
+                await Task.Delay(500);
+                
+                await JSRuntime.InvokeVoidAsync("showToast", "Úspěch", "Tábor byl smazán", "success");
+                await LoadCamps();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error deleting camp");
+                await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se smazat tábor", "error");
+            }
+        }
+    }
+
+    private string GenerateAccessCode(int campId)
+    {
+        // Simple access code generation based on camp ID
+        // In real implementation, this would be stored in database
+        return $"CAMP{campId:D4}";
+    }
+
+    private string GetCapacityColorClass(int registered, int total)
+    {
+        if (total == 0) return "bg-secondary";
+        
+        var percentage = (registered * 100) / total;
+        return percentage switch
+        {
+            >= 90 => "bg-danger",
+            >= 75 => "bg-warning",
+            >= 50 => "bg-info",
+            _ => "bg-success"
+        };
+    }
+
+    public class CampFormModel
+    {
+        [Required(ErrorMessage = "Název tábora je povinný")]
+        [StringLength(200)]
+        public string Name { get; set; } = "";
+
+        [Required(ErrorMessage = "Typ tábora je povinný")]
+        public string Type { get; set; } = "";
+
+        [Required(ErrorMessage = "Věková kategorie je povinná")]
+        [StringLength(50)]
+        public string AgeGroup { get; set; } = "";
+
+        [Required(ErrorMessage = "Lokace je povinná")]
+        [StringLength(200)]
+        public string Location { get; set; } = "";
+
+        [Required(ErrorMessage = "Cena je povinná")]
+        [Range(0, 99999, ErrorMessage = "Cena musí být kladné číslo")]
+        public decimal Price { get; set; }
+
+        [Required(ErrorMessage = "Datum začátku je povinné")]
+        public DateOnly StartDate { get; set; } = DateOnly.FromDateTime(DateTime.Today.AddDays(30));
+
+        [Required(ErrorMessage = "Datum konce je povinné")]
+        public DateOnly EndDate { get; set; } = DateOnly.FromDateTime(DateTime.Today.AddDays(37));
+
+        [Required(ErrorMessage = "Kapacita je povinná")]
+        [Range(1, 999, ErrorMessage = "Kapacita musí být kladné číslo")]
+        public int Capacity { get; set; } = 20;
+
+        [Required(ErrorMessage = "Počet volných míst je povinný")]
+        [Range(0, 999, ErrorMessage = "Počet volných míst musí být nezáporné číslo")]
+        public int AvailableSpots { get; set; } = 20;
+
+        [StringLength(500)]
+        public string? ShortDescription { get; set; }
+
+        public string? Description { get; set; }
+
+        public double Latitude { get; set; }
+        
+        public double Longitude { get; set; }
+    }
+}

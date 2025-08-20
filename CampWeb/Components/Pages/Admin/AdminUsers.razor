@@ -1,0 +1,719 @@
+@page "/admin/users"
+@page "/admin/users/{action?}"
+@page "/admin/users/{action}/{id}"
+@using CampWeb.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@using System.ComponentModel.DataAnnotations
+@inject UserManager<ApplicationUser> UserManager
+@inject RoleManager<IdentityRole> RoleManager
+@inject IJSRuntime JSRuntime
+@inject ILogger<AdminUsers> Logger
+@attribute [Authorize(Roles = "Admin,SuperAdmin")]
+@layout AdminLayout
+@rendermode InteractiveServer
+
+<PageTitle>Správa uživatelů - Admin Panel</PageTitle>
+
+<CascadingValue Value="@("Správa & administrace")" Name="BreadcrumbTitle">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-0">Správa uživatelů</h1>
+                    <p class="text-muted">Spravujte administrátory a uživatele systému</p>
+                </div>
+                <div>
+                    @if (string.IsNullOrEmpty(Action) || Action == "list")
+                    {
+                        <button class="btn btn-primary" @onclick="ShowCreateModal">
+                            <i class="fas fa-user-plus me-2"></i>
+                            Nový uživatel
+                        </button>
+                    }
+                    else
+                    {
+                        <a href="/admin/users" class="btn btn-outline-secondary">
+                            <i class="fas fa-arrow-left me-2"></i>
+                            Zpět na seznam
+                        </a>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters and Statistics -->
+    <div class="row mb-4">
+        <div class="col-lg-8 mb-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-4">
+                            <label class="form-label">Filtrovat podle role</label>
+                            <select class="form-select" @bind="selectedRole" @bind:event="onchange" @bind:after="FilterUsers">
+                                <option value="">Všechny role</option>
+                                <option value="SuperAdmin">Super Admin</option>
+                                <option value="Admin">Administrátor</option>
+                                <option value="Parent">Rodič</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Stav</label>
+                            <select class="form-select" @bind="selectedStatus" @bind:event="onchange" @bind:after="FilterUsers">
+                                <option value="">Všechny stavy</option>
+                                <option value="active">Aktivní</option>
+                                <option value="inactive">Neaktivní</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Hledat</label>
+                            <input type="text" class="form-control" placeholder="Jméno, email..." 
+                                   @bind="searchTerm" @bind:event="oninput" @bind:after="FilterUsers" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4 mb-3">
+            <div class="row g-2">
+                <div class="col-6">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body text-center py-3">
+                            <i class="fas fa-users text-primary fs-3 mb-1"></i>
+                            <h5 class="mb-0">@allUsers.Count</h5>
+                            <div class="text-muted small">Celkem</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-body text-center py-3">
+                            <i class="fas fa-user-shield text-success fs-3 mb-1"></i>
+                            <h5 class="mb-0">@adminCount</h5>
+                            <div class="text-muted small">Admini</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Users Table -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white">
+            <h5 class="card-title mb-0">Seznam uživatelů (@filteredUsers.Count)</h5>
+        </div>
+        <div class="card-body p-0">
+            @if (isLoading)
+            {
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Načítání...</span>
+                    </div>
+                    <p class="mt-2 text-muted">Načítání uživatelů...</p>
+                </div>
+            }
+            else if (!filteredUsers.Any())
+            {
+                <div class="text-center py-5">
+                    <i class="fas fa-users text-muted display-1 mb-3"></i>
+                    <h5 class="text-muted">Žádní uživatelé</h5>
+                    <p class="text-muted">
+                        @if (allUsers.Any())
+                        {
+                            @:Žádný uživatel neodpovídá vašemu vyhledávání.
+                        }
+                        else
+                        {
+                            @:Zatím nejsou zaregistrovaní žádní uživatelé.
+                        }
+                    </p>
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Uživatel</th>
+                                <th>E-mail</th>
+                                <th>Role</th>
+                                <th>Registrován</th>
+                                <th>Poslední přihlášení</th>
+                                <th>Stav</th>
+                                <th width="120">Akce</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var user in filteredUsers)
+                            {
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="avatar bg-primary text-white me-3">
+                                                @user.FullName.Substring(0, 1).ToUpper()
+                                            </div>
+                                            <div>
+                                                <div class="fw-bold">@user.FullName</div>
+                                                <div class="text-muted small">@user.UserName</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div>@user.Email</div>
+                                        @if (user.EmailConfirmed)
+                                        {
+                                            <small class="text-success"><i class="fas fa-check-circle me-1"></i>Ověřen</small>
+                                        }
+                                        else
+                                        {
+                                            <small class="text-warning"><i class="fas fa-exclamation-circle me-1"></i>Neověřen</small>
+                                        }
+                                    </td>
+                                    <td>
+                                        @{
+                                            var userRoles = GetUserRoles(user.Id);
+                                        }
+                                        @if (userRoles.Any())
+                                        {
+                                            @foreach (var role in userRoles)
+                                            {
+                                                <span class="badge @GetRoleBadgeClass(role) me-1">@GetRoleDisplayName(role)</span>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">Žádná role</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <div class="small">@user.CreatedAt.ToString("dd.MM.yyyy")</div>
+                                        <div class="text-muted small">@user.CreatedAt.ToString("HH:mm")</div>
+                                    </td>
+                                    <td>
+                                        @if (user.LastLoginAt.HasValue)
+                                        {
+                                            <div class="small">@user.LastLoginAt.Value.ToString("dd.MM.yyyy")</div>
+                                            <div class="text-muted small">@user.LastLoginAt.Value.ToString("HH:mm")</div>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">Nikdy</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (user.LockoutEnd.HasValue && user.LockoutEnd > DateTime.UtcNow)
+                                        {
+                                            <span class="badge bg-danger">Zablokovaný</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-success">Aktivní</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <div class="dropdown">
+                                            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                                <i class="fas fa-ellipsis-v"></i>
+                                            </button>
+                                            <ul class="dropdown-menu">
+                                                <li>
+                                                    <button class="dropdown-item" @onclick="() => ViewUser(user)">
+                                                        <i class="fas fa-eye me-2"></i>Detail
+                                                    </button>
+                                                </li>
+                                                <li>
+                                                    <button class="dropdown-item" @onclick="() => EditUser(user)">
+                                                        <i class="fas fa-edit me-2"></i>Upravit
+                                                    </button>
+                                                </li>
+                                                <li>
+                                                    <button class="dropdown-item" @onclick="() => ManageUserRoles(user)">
+                                                        <i class="fas fa-user-cog me-2"></i>Role
+                                                    </button>
+                                                </li>
+                                                <li><hr class="dropdown-divider"></li>
+                                                <li>
+                                                    @if (user.LockoutEnd.HasValue && user.LockoutEnd > DateTime.UtcNow)
+                                                    {
+                                                        <button class="dropdown-item text-success" @onclick="() => UnlockUser(user)">
+                                                            <i class="fas fa-unlock me-2"></i>Odblokovat
+                                                        </button>
+                                                    }
+                                                    else
+                                                    {
+                                                        <button class="dropdown-item text-warning" @onclick="() => LockUser(user)">
+                                                            <i class="fas fa-lock me-2"></i>Zablokovat
+                                                        </button>
+                                                    }
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Create User Modal -->
+    @if (showCreateModal)
+    {
+        <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Vytvořit nového uživatele</h5>
+                        <button type="button" class="btn-close" @onclick="HideCreateModal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <EditForm Model="createUserForm" OnValidSubmit="CreateUser">
+                            <DataAnnotationsValidator />
+                            
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Jméno *</label>
+                                    <InputText @bind-Value="createUserForm.FirstName" class="form-control" />
+                                    <ValidationMessage For="@(() => createUserForm.FirstName)" class="text-danger small" />
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Příjmení *</label>
+                                    <InputText @bind-Value="createUserForm.LastName" class="form-control" />
+                                    <ValidationMessage For="@(() => createUserForm.LastName)" class="text-danger small" />
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">E-mail *</label>
+                                <InputText @bind-Value="createUserForm.Email" class="form-control" type="email" />
+                                <ValidationMessage For="@(() => createUserForm.Email)" class="text-danger small" />
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Telefon</label>
+                                <InputText @bind-Value="createUserForm.PhoneNumber" class="form-control" />
+                                <ValidationMessage For="@(() => createUserForm.PhoneNumber)" class="text-danger small" />
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Heslo *</label>
+                                    <InputText @bind-Value="createUserForm.Password" class="form-control" type="password" />
+                                    <ValidationMessage For="@(() => createUserForm.Password)" class="text-danger small" />
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Potvrdit heslo *</label>
+                                    <InputText @bind-Value="createUserForm.ConfirmPassword" class="form-control" type="password" />
+                                    <ValidationMessage For="@(() => createUserForm.ConfirmPassword)" class="text-danger small" />
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Role</label>
+                                <InputSelect @bind-Value="createUserForm.Role" class="form-select">
+                                    <option value="Parent">Rodič</option>
+                                    <option value="Admin">Administrátor</option>
+                                    <option value="SuperAdmin">Super Admin</option>
+                                </InputSelect>
+                            </div>
+
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" @onclick="HideCreateModal">Zrušit</button>
+                                @if (isCreatingUser)
+                                {
+                                    <button class="btn btn-primary" type="button" disabled>
+                                        <span class="spinner-border spinner-border-sm me-2"></span>
+                                        Vytvářím...
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-user-plus me-2"></i>Vytvořit
+                                    </button>
+                                }
+                            </div>
+                        </EditForm>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- User Detail Modal -->
+    @if (selectedUser != null)
+    {
+        <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Detail uživatele - @selectedUser.FullName</h5>
+                        <button type="button" class="btn-close" @onclick="CloseUserDetailModal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6 class="text-primary mb-3">Základní informace</h6>
+                                <table class="table table-sm">
+                                    <tr>
+                                        <td><strong>Jméno:</strong></td>
+                                        <td>@selectedUser.FullName</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>E-mail:</strong></td>
+                                        <td>@selectedUser.Email</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Telefon:</strong></td>
+                                        <td>@(selectedUser.PhoneNumber ?? "Nezadán")</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Registrován:</strong></td>
+                                        <td>@selectedUser.CreatedAt.ToString("dd.MM.yyyy HH:mm")</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Poslední přihlášení:</strong></td>
+                                        <td>@(selectedUser.LastLoginAt?.ToString("dd.MM.yyyy HH:mm") ?? "Nikdy")</td>
+                                    </tr>
+                                </table>
+                            </div>
+                            <div class="col-md-6">
+                                <h6 class="text-primary mb-3">Role a oprávnění</h6>
+                                <div class="mb-3">
+                                    @{
+                                        var userRoles = GetUserRoles(selectedUser.Id);
+                                    }
+                                    @if (userRoles.Any())
+                                    {
+                                        @foreach (var role in userRoles)
+                                        {
+                                            <span class="badge @GetRoleBadgeClass(role) me-1 mb-1">@GetRoleDisplayName(role)</span>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Žádné role přiřazeny</span>
+                                    }
+                                </div>
+                                
+                                <h6 class="text-primary mb-3">Stav účtu</h6>
+                                <div class="mb-2">
+                                    <strong>E-mail ověřen:</strong> 
+                                    @if (selectedUser.EmailConfirmed)
+                                    {
+                                        <span class="text-success">Ano</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-warning">Ne</span>
+                                    }
+                                </div>
+                                <div class="mb-2">
+                                    <strong>Stav účtu:</strong>
+                                    @if (selectedUser.LockoutEnd.HasValue && selectedUser.LockoutEnd > DateTime.UtcNow)
+                                    {
+                                        <span class="text-danger">Zablokován do @selectedUser.LockoutEnd.Value.ToString("dd.MM.yyyy HH:mm")</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-success">Aktivní</span>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-primary" @onclick="() => EditUser(selectedUser)">
+                            <i class="fas fa-edit me-2"></i>Upravit
+                        </button>
+                        <button type="button" class="btn btn-secondary" @onclick="CloseUserDetailModal">Zavřít</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</CascadingValue>
+
+@code {
+    [Parameter] public string? Action { get; set; }
+    [Parameter] public string? Id { get; set; }
+
+    private List<ApplicationUser> allUsers = new();
+    private List<ApplicationUser> filteredUsers = new();
+    private Dictionary<string, List<string>> userRoles = new();
+    private ApplicationUser? selectedUser;
+    
+    private string selectedRole = "";
+    private string selectedStatus = "";
+    private string searchTerm = "";
+    private bool isLoading = true;
+    private bool showCreateModal = false;
+    private bool isCreatingUser = false;
+    private int adminCount = 0;
+
+    private CreateUserFormModel createUserForm = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            isLoading = true;
+            
+            // Load all users
+            allUsers = UserManager.Users.OrderBy(u => u.FullName).ToList();
+            
+            // Load user roles
+            userRoles.Clear();
+            foreach (var user in allUsers)
+            {
+                var roles = await UserManager.GetRolesAsync(user);
+                userRoles[user.Id] = roles.ToList();
+            }
+            
+            adminCount = userRoles.Values.Count(roles => roles.Any(r => r == "Admin" || r == "SuperAdmin"));
+            
+            filteredUsers = allUsers.ToList();
+            
+            Logger.LogInformation("Loaded {UserCount} users", allUsers.Count);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading users data");
+            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se načíst uživatele", "error");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task FilterUsers()
+    {
+        var filtered = allUsers.AsEnumerable();
+
+        // Filter by role
+        if (!string.IsNullOrEmpty(selectedRole))
+        {
+            filtered = filtered.Where(u => GetUserRoles(u.Id).Contains(selectedRole));
+        }
+
+        // Filter by status
+        if (!string.IsNullOrEmpty(selectedStatus))
+        {
+            if (selectedStatus == "active")
+            {
+                filtered = filtered.Where(u => !u.LockoutEnd.HasValue || u.LockoutEnd <= DateTime.UtcNow);
+            }
+            else if (selectedStatus == "inactive")
+            {
+                filtered = filtered.Where(u => u.LockoutEnd.HasValue && u.LockoutEnd > DateTime.UtcNow);
+            }
+        }
+
+        // Filter by search term
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            var term = searchTerm.ToLower();
+            filtered = filtered.Where(u =>
+                u.FullName.ToLower().Contains(term) ||
+                (u.Email?.ToLower().Contains(term) ?? false) ||
+                (u.UserName?.ToLower().Contains(term) ?? false));
+        }
+
+        filteredUsers = filtered.ToList();
+        await Task.CompletedTask;
+    }
+
+    private void ShowCreateModal()
+    {
+        createUserForm = new CreateUserFormModel();
+        showCreateModal = true;
+    }
+
+    private void HideCreateModal()
+    {
+        showCreateModal = false;
+        createUserForm = new CreateUserFormModel();
+    }
+
+    private async Task CreateUser()
+    {
+        try
+        {
+            isCreatingUser = true;
+            
+            var user = new ApplicationUser
+            {
+                UserName = createUserForm.Email,
+                Email = createUserForm.Email,
+                FirstName = createUserForm.FirstName,
+                LastName = createUserForm.LastName,
+                PhoneNumber = createUserForm.PhoneNumber,
+                EmailConfirmed = true,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            var result = await UserManager.CreateAsync(user, createUserForm.Password);
+            
+            if (result.Succeeded)
+            {
+                await UserManager.AddToRoleAsync(user, createUserForm.Role);
+                
+                await JSRuntime.InvokeVoidAsync("showToast", "Úspěch", "Uživatel byl vytvořen", "success");
+                await LoadData();
+                HideCreateModal();
+            }
+            else
+            {
+                var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+                await JSRuntime.InvokeVoidAsync("showToast", "Chyba", $"Nepodařilo se vytvořit uživatele: {errors}", "error");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error creating user");
+            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se vytvořit uživatele", "error");
+        }
+        finally
+        {
+            isCreatingUser = false;
+        }
+    }
+
+    private void ViewUser(ApplicationUser user)
+    {
+        selectedUser = user;
+    }
+
+    private void CloseUserDetailModal()
+    {
+        selectedUser = null;
+    }
+
+    private void EditUser(ApplicationUser user)
+    {
+        selectedUser = null;
+        // Navigate to edit page or show edit modal
+        // Implementation depends on requirements
+    }
+
+    private void ManageUserRoles(ApplicationUser user)
+    {
+        // Implementation for role management modal
+        // Could be a separate component or modal
+    }
+
+    private async Task LockUser(ApplicationUser user)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
+            $"Opravdu chcete zablokovat uživatele {user.FullName}?");
+        
+        if (confirmed)
+        {
+            try
+            {
+                await UserManager.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddYears(100));
+                await LoadData();
+                await JSRuntime.InvokeVoidAsync("showToast", "Úspěch", "Uživatel byl zablokován", "success");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error locking user");
+                await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se zablokovat uživatele", "error");
+            }
+        }
+    }
+
+    private async Task UnlockUser(ApplicationUser user)
+    {
+        try
+        {
+            await UserManager.SetLockoutEndDateAsync(user, null);
+            await LoadData();
+            await JSRuntime.InvokeVoidAsync("showToast", "Úspěch", "Uživatel byl odblokován", "success");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error unlocking user");
+            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se odblokovat uživatele", "error");
+        }
+    }
+
+    private List<string> GetUserRoles(string userId)
+    {
+        return userRoles.GetValueOrDefault(userId, new List<string>());
+    }
+
+    private string GetRoleBadgeClass(string role)
+    {
+        return role switch
+        {
+            "SuperAdmin" => "bg-danger",
+            "Admin" => "bg-warning text-dark",
+            "Parent" => "bg-info",
+            _ => "bg-secondary"
+        };
+    }
+
+    private string GetRoleDisplayName(string role)
+    {
+        return role switch
+        {
+            "SuperAdmin" => "Super Admin",
+            "Admin" => "Administrátor",
+            "Parent" => "Rodič",
+            _ => role
+        };
+    }
+
+    public class CreateUserFormModel
+    {
+        [Required(ErrorMessage = "Jméno je povinné")]
+        public string FirstName { get; set; } = "";
+
+        [Required(ErrorMessage = "Příjmení je povinné")]
+        public string LastName { get; set; } = "";
+
+        [Required(ErrorMessage = "E-mail je povinný")]
+        [EmailAddress(ErrorMessage = "Neplatný formát e-mailu")]
+        public string Email { get; set; } = "";
+
+        public string PhoneNumber { get; set; } = "";
+
+        [Required(ErrorMessage = "Heslo je povinné")]
+        [StringLength(100, MinimumLength = 6, ErrorMessage = "Heslo musí mít alespoň 6 znaků")]
+        public string Password { get; set; } = "";
+
+        [Compare("Password", ErrorMessage = "Hesla se neshodují")]
+        public string ConfirmPassword { get; set; } = "";
+
+        [Required]
+        public string Role { get; set; } = "Parent";
+    }
+}
+
+<style>
+    .avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+    }
+    
+    .modal.show {
+        display: block !important;
+    }
+</style>

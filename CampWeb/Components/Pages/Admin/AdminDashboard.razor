@@ -1,0 +1,211 @@
+@page "/admin"
+@page "/admin/dashboard"
+@layout AdminLayout
+@using CampWeb.Models
+@using CampWeb.Services
+@inject ICampService CampService
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Dashboard - Admin Panel</PageTitle>
+
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1 class="h3 mb-0 text-gray-800">Dashboard</h1>
+            <p class="mb-0">Přehled administrace letních táborů</p>
+        </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="row">
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                Celkem táborů
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">@totalCamps</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-campground fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                Registrací
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">@totalRegistrations</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-users fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                                Volná místa
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">@availableSpots</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-chair fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-warning shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                                Celkový příjem
+                            </div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">@totalRevenue.ToString("N0") Kč</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-dollar-sign fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Registrations -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Poslední registrace</h6>
+                </div>
+                <div class="card-body">
+                    @if (recentRegistrations.Any())
+                    {
+                    <div class="table-responsive">
+                        <table class="table table-bordered">
+                            <thead>
+                            <tr>
+                                <th>Dítě</th>
+                                <th>Tábor</th>
+                                <th>Rodič</th>
+                                <th>Datum</th>
+                                <th>Status</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            @foreach (var reg in recentRegistrations.Take(10))
+                            {
+                            <tr>
+                                <td>@reg.ChildFullName</td>
+                                <td>@reg.Camp.Name</td>
+                                <td>@reg.ParentName</td>
+                                <td>@reg.RegistrationDate.ToString("dd.MM.yyyy HH:mm")</td>
+                                <td>
+                                                <span class="badge @GetStatusBadgeClass(reg.Status)">
+                                                    @GetStatusText(reg.Status)
+                                                </span>
+                                </td>
+                            </tr>
+                            }
+                            </tbody>
+                        </table>
+                    </div>
+                    }
+                    else
+                    {
+                    <p class="text-muted">Zatím žádné registrace</p>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+private int totalCamps = 0;
+private int totalRegistrations = 0;
+private int availableSpots = 0;
+private decimal totalRevenue = 0;
+private List<Registration> recentRegistrations = new();
+
+protected override async Task OnInitializedAsync()
+{
+await LoadStatistics();
+}
+
+private async Task LoadStatistics()
+{
+try
+{
+var camps = await CampService.GetAllCampsAsync();
+totalCamps = camps.Count;
+availableSpots = camps.Sum(c => c.AvailableSpots);
+
+var allRegistrations = new List<Registration>();
+foreach (var camp in camps)
+{
+var registrations = await CampService.GetUserRegistrationsAsync("");
+allRegistrations.AddRange(registrations);
+}
+
+totalRegistrations = allRegistrations.Count;
+recentRegistrations = allRegistrations.OrderByDescending(r => r.RegistrationDate).ToList();
+totalRevenue = allRegistrations
+.Where(r => r.Status == RegistrationStatus.Paid || r.Status == RegistrationStatus.Confirmed)
+.Sum(r => r.Camp.Price);
+}
+catch (Exception ex)
+{
+// Log error
+}
+}
+
+private static string GetStatusBadgeClass(RegistrationStatus status) => status switch
+{
+RegistrationStatus.Pending => "badge-warning",
+RegistrationStatus.Confirmed => "badge-info",
+RegistrationStatus.Paid => "badge-success",
+RegistrationStatus.Cancelled => "badge-secondary",
+_ => "badge-secondary"
+};
+
+private static string GetStatusText(RegistrationStatus status) => status switch
+{
+RegistrationStatus.Pending => "Čeká na potvrzení",
+RegistrationStatus.Confirmed => "Potvrzeno",
+RegistrationStatus.Paid => "Zaplaceno",
+RegistrationStatus.Cancelled => "Zrušeno",
+_ => "Neznámý stav"
+};
+}
+
+<style>
+    .border-left-primary { border-left: 0.25rem solid #4e73df !important; }
+    .border-left-success { border-left: 0.25rem solid #1cc88a !important; }
+    .border-left-info { border-left: 0.25rem solid #36b9cc !important; }
+    .border-left-warning { border-left: 0.25rem solid #f6c23e !important; }
+    .badge-warning { background-color: #f6c23e; }
+    .badge-info { background-color: #36b9cc; }
+    .badge-success { background-color: #1cc88a; }
+    .badge-secondary { background-color: #858796; }
+</style>

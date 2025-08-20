@@ -1,0 +1,573 @@
+@page "/admin/campers"
+@page "/admin/campers/{campId:int}"
+@using CampWeb.Models
+@using CampWeb.Services
+@using Microsoft.AspNetCore.Authorization
+@inject ICampService CampService
+@inject IJSRuntime JSRuntime
+@inject ILogger<AdminCampers> Logger
+@attribute [Authorize(Roles = "Admin,SuperAdmin")]
+@layout AdminLayout
+@rendermode InteractiveServer
+
+<PageTitle>Účastníci táborů - Admin Panel</PageTitle>
+
+<CascadingValue Value="@("Účastníci fotek")" Name="BreadcrumbTitle">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-0">Účastníci táborů</h1>
+                    <p class="text-muted">Přehled všech registrovaných účastníků</p>
+                </div>
+                <div>
+                    <button class="btn btn-success me-2" @onclick="ExportToCsv">
+                        <i class="fas fa-download me-2"></i>
+                        Export CSV
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Camp Filter -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="row align-items-end">
+                        <div class="col-md-4 mb-3">
+                            <label class="form-label">Filtrovat podle tábora</label>
+                            <select class="form-select" @bind="selectedCampId" @bind:event="onchange" @bind:after="LoadRegistrations">
+                                <option value="">Všechny tábory</option>
+                                @foreach (var camp in camps)
+                                {
+                                    <option value="@camp.Id">@camp.Name (@camp.StartDate.ToString("dd.MM.yyyy"))</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Stav registrace</label>
+                            <select class="form-select" @bind="selectedStatus" @bind:event="onchange" @bind:after="FilterRegistrations">
+                                <option value="">Všechny stavy</option>
+                                <option value="Pending">Čeká na potvrzení</option>
+                                <option value="Confirmed">Potvrzeno</option>
+                                <option value="Paid">Zaplaceno</option>
+                                <option value="Cancelled">Zrušeno</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label">Hledat</label>
+                            <input type="text" class="form-control" placeholder="Jméno, email..." 
+                                   @bind="searchTerm" @bind:event="oninput" @bind:after="FilterRegistrations" />
+                        </div>
+                        <div class="col-md-2 mb-3">
+                            <button class="btn btn-outline-secondary w-100" @onclick="ClearFilters">
+                                <i class="fas fa-times me-1"></i>
+                                Vymazat
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="row mb-4">
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="stat-icon bg-primary me-3">
+                            <i class="fas fa-users text-white"></i>
+                        </div>
+                        <div>
+                            <div class="text-muted small">Celkem registrací</div>
+                            <div class="h4 mb-0">@allRegistrations.Count</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="stat-icon bg-success me-3">
+                            <i class="fas fa-check text-white"></i>
+                        </div>
+                        <div>
+                            <div class="text-muted small">Zaplaceno</div>
+                            <div class="h4 mb-0">@allRegistrations.Count(r => r.Status == RegistrationStatus.Paid)</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="stat-icon bg-warning me-3">
+                            <i class="fas fa-clock text-white"></i>
+                        </div>
+                        <div>
+                            <div class="text-muted small">Čeká na platbu</div>
+                            <div class="h4 mb-0">@allRegistrations.Count(r => r.Status == RegistrationStatus.Pending || r.Status == RegistrationStatus.Confirmed)</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex align-items-center">
+                        <div class="stat-icon bg-info me-3">
+                            <i class="fas fa-euro-sign text-white"></i>
+                        </div>
+                        <div>
+                            <div class="text-muted small">Příjem (zaplaceno)</div>
+                            <div class="h4 mb-0">@CalculateRevenue().ToString("N0") Kč</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Registrations Table -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white">
+            <div class="d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    Seznam účastníků
+                    @if (!string.IsNullOrEmpty(selectedCampId) && camps.Any())
+                    {
+                        var selectedCamp = camps.FirstOrDefault(c => c.Id.ToString() == selectedCampId);
+                        if (selectedCamp != null)
+                        {
+                            <span class="text-muted">- @selectedCamp.Name</span>
+                        }
+                    }
+                    <span class="badge bg-secondary ms-2">@filteredRegistrations.Count</span>
+                </h5>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            @if (isLoading)
+            {
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Načítání...</span>
+                    </div>
+                    <p class="mt-2 text-muted">Načítání registrací...</p>
+                </div>
+            }
+            else if (!filteredRegistrations.Any())
+            {
+                <div class="text-center py-5">
+                    <i class="fas fa-user-friends text-muted display-1 mb-3"></i>
+                    <h5 class="text-muted">Žádné registrace</h5>
+                    <p class="text-muted">
+                        @if (allRegistrations.Any())
+                        {
+                            @:Žádná registrace neodpovídá vybraným filtrům.
+                        }
+                        else
+                        {
+                            @:Zatím nejsou žádné registrace.
+                        }
+                    </p>
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Dítě</th>
+                                <th>Věk</th>
+                                <th>Tábor</th>
+                                <th>Rodič</th>
+                                <th>Kontakt</th>
+                                <th>Zdraví</th>
+                                <th>Stav</th>
+                                <th>Access kód</th>
+                                <th width="100">Akce</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var registration in filteredRegistrations)
+                            {
+                                <tr>
+                                    <td>
+                                        <div class="fw-bold">@registration.ChildFullName</div>
+                                        <div class="text-muted small">@registration.ChildBirthDate.ToString("dd.MM.yyyy")</div>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-info">@registration.ChildAge let</span>
+                                    </td>
+                                    <td>
+                                        <div class="small">
+                                            <strong>@registration.Camp.Name</strong><br>
+                                            <span class="text-muted">@registration.Camp.StartDate.ToString("dd.MM") - @registration.Camp.EndDate.ToString("dd.MM.yyyy")</span>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="fw-bold">@registration.ParentName</div>
+                                        <div class="text-muted small">@registration.ParentEmail</div>
+                                    </td>
+                                    <td>
+                                        <div class="small">
+                                            <i class="fas fa-phone text-muted me-1"></i>@registration.ParentPhone
+                                        </div>
+                                    </td>
+                                    <td>
+                                        @if (registration.HasMedicalIssues)
+                                        {
+                                            <span class="badge bg-warning text-dark" title="@registration.MedicalIssuesDescription">
+                                                <i class="fas fa-exclamation-triangle"></i> Zdravotní info
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted small">Bez omezení</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <span class="badge @GetStatusBadgeClass(registration.Status)">
+                                            @GetStatusText(registration.Status)
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <code class="text-primary small">@registration.AccessCode</code>
+                                    </td>
+                                    <td>
+                                        <div class="dropdown">
+                                            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                                <i class="fas fa-ellipsis-v"></i>
+                                            </button>
+                                            <ul class="dropdown-menu">
+                                                <li>
+                                                    <button class="dropdown-item" @onclick="() => ViewRegistrationDetail(registration)">
+                                                        <i class="fas fa-eye me-2"></i>Detail
+                                                    </button>
+                                                </li>
+                                                <li>
+                                                    <button class="dropdown-item" @onclick="() => UpdateRegistrationStatus(registration)">
+                                                        <i class="fas fa-edit me-2"></i>Změnit stav
+                                                    </button>
+                                                </li>
+                                                <li><hr class="dropdown-divider"></li>
+                                                <li>
+                                                    <button class="dropdown-item text-danger" @onclick="() => CancelRegistration(registration)">
+                                                        <i class="fas fa-times me-2"></i>Zrušit registraci
+                                                    </button>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Registration Detail Modal -->
+    @if (selectedRegistration != null)
+    {
+        <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Detail registrace - @selectedRegistration.ChildFullName</h5>
+                        <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6 class="text-primary mb-3">Informace o dítěti</h6>
+                                <table class="table table-sm">
+                                    <tr>
+                                        <td><strong>Jméno:</strong></td>
+                                        <td>@selectedRegistration.ChildFullName</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Datum narození:</strong></td>
+                                        <td>@selectedRegistration.ChildBirthDate.ToString("dd.MM.yyyy")</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Věk:</strong></td>
+                                        <td>@selectedRegistration.ChildAge let</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Zdravotní omezení:</strong></td>
+                                        <td>@(selectedRegistration.HasMedicalIssues ? "Ano" : "Ne")</td>
+                                    </tr>
+                                    @if (selectedRegistration.HasMedicalIssues)
+                                    {
+                                        <tr>
+                                            <td><strong>Popis:</strong></td>
+                                            <td>@selectedRegistration.MedicalIssuesDescription</td>
+                                        </tr>
+                                    }
+                                </table>
+                            </div>
+                            <div class="col-md-6">
+                                <h6 class="text-primary mb-3">Kontaktní údaje</h6>
+                                <table class="table table-sm">
+                                    <tr>
+                                        <td><strong>Rodič/zákonný zástupce:</strong></td>
+                                        <td>@selectedRegistration.ParentName</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>E-mail:</strong></td>
+                                        <td>@selectedRegistration.ParentEmail</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Telefon:</strong></td>
+                                        <td>@selectedRegistration.ParentPhone</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Registrováno:</strong></td>
+                                        <td>@selectedRegistration.RegistrationDate.ToString("dd.MM.yyyy HH:mm")</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Access kód:</strong></td>
+                                        <td><code>@selectedRegistration.AccessCode</code></td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        @if (!string.IsNullOrEmpty(selectedRegistration.SpecialRequirements))
+                        {
+                            <div class="row mt-3">
+                                <div class="col-12">
+                                    <h6 class="text-primary">Speciální požadavky</h6>
+                                    <p class="bg-light p-3 rounded">@selectedRegistration.SpecialRequirements</p>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" @onclick="CloseModal">Zavřít</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</CascadingValue>
+
+@code {
+    [Parameter] public int? CampId { get; set; }
+
+    private List<Camp> camps = new();
+    private List<Registration> allRegistrations = new();
+    private List<Registration> filteredRegistrations = new();
+    private Registration? selectedRegistration;
+    
+    private string selectedCampId = "";
+    private string selectedStatus = "";
+    private string searchTerm = "";
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+        
+        if (CampId.HasValue)
+        {
+            selectedCampId = CampId.Value.ToString();
+            await FilterRegistrations();
+        }
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            isLoading = true;
+            camps = await CampService.GetAllCampsAsync();
+            
+            // Load all registrations from all camps
+            allRegistrations = camps.SelectMany(c => c.Registrations ?? Enumerable.Empty<Registration>()).ToList();
+            filteredRegistrations = allRegistrations.ToList();
+            
+            Logger.LogInformation("Loaded {CampCount} camps and {RegistrationCount} registrations", 
+                camps.Count, allRegistrations.Count);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading campers data");
+            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se načíst data", "error");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadRegistrations()
+    {
+        await FilterRegistrations();
+    }
+
+    private async Task FilterRegistrations()
+    {
+        var filtered = allRegistrations.AsEnumerable();
+
+        // Filter by camp
+        if (!string.IsNullOrEmpty(selectedCampId) && int.TryParse(selectedCampId, out int campId))
+        {
+            filtered = filtered.Where(r => r.CampId == campId);
+        }
+
+        // Filter by status
+        if (!string.IsNullOrEmpty(selectedStatus) && Enum.TryParse<RegistrationStatus>(selectedStatus, out var status))
+        {
+            filtered = filtered.Where(r => r.Status == status);
+        }
+
+        // Filter by search term
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            var term = searchTerm.ToLower();
+            filtered = filtered.Where(r =>
+                r.ChildFullName.ToLower().Contains(term) ||
+                r.ParentName.ToLower().Contains(term) ||
+                r.ParentEmail.ToLower().Contains(term));
+        }
+
+        filteredRegistrations = filtered.OrderByDescending(r => r.RegistrationDate).ToList();
+        await Task.CompletedTask;
+    }
+
+    private async Task ClearFilters()
+    {
+        selectedCampId = "";
+        selectedStatus = "";
+        searchTerm = "";
+        await FilterRegistrations();
+    }
+
+    private async Task ExportToCsv()
+    {
+        try
+        {
+            var csvContent = GenerateCsvContent();
+            await JSRuntime.InvokeVoidAsync("downloadCsv", "ucastnici-taboru.csv", csvContent);
+            await JSRuntime.InvokeVoidAsync("showToast", "Úspěch", "Data byla exportována", "success");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error exporting CSV");
+            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Export se nezdařil", "error");
+        }
+    }
+
+    private string GenerateCsvContent()
+    {
+        var csv = new System.Text.StringBuilder();
+        csv.AppendLine("Jmeno dítěte,Datum narození,Věk,Tábor,Termín,Rodič,Email,Telefon,Stav,Access kód,Registrováno");
+        
+        foreach (var reg in filteredRegistrations)
+        {
+            csv.AppendLine($"\"{reg.ChildFullName}\",\"{reg.ChildBirthDate:dd.MM.yyyy}\",{reg.ChildAge}," +
+                          $"\"{reg.Camp.Name}\",\"{reg.Camp.StartDate:dd.MM.yyyy} - {reg.Camp.EndDate:dd.MM.yyyy}\"," +
+                          $"\"{reg.ParentName}\",\"{reg.ParentEmail}\",\"{reg.ParentPhone}\"," +
+                          $"\"{GetStatusText(reg.Status)}\",\"{reg.AccessCode}\",\"{reg.RegistrationDate:dd.MM.yyyy HH:mm}\"");
+        }
+        
+        return csv.ToString();
+    }
+
+    private decimal CalculateRevenue()
+    {
+        return allRegistrations
+            .Where(r => r.Status == RegistrationStatus.Paid)
+            .Sum(r => r.Camp.Price);
+    }
+
+    private void ViewRegistrationDetail(Registration registration)
+    {
+        selectedRegistration = registration;
+    }
+
+    private void CloseModal()
+    {
+        selectedRegistration = null;
+    }
+
+    private async Task UpdateRegistrationStatus(Registration registration)
+    {
+        // Implementation for updating registration status
+        await JSRuntime.InvokeVoidAsync("showToast", "Info", "Funkce bude implementována", "info");
+    }
+
+    private async Task CancelRegistration(Registration registration)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
+            $"Opravdu chcete zrušit registraci {registration.ChildFullName}?");
+        
+        if (confirmed)
+        {
+            try
+            {
+                registration.Status = RegistrationStatus.Cancelled;
+                await JSRuntime.InvokeVoidAsync("showToast", "Úspěch", "Registrace byla zrušena", "success");
+                await FilterRegistrations();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error cancelling registration");
+                await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se zrušit registraci", "error");
+            }
+        }
+    }
+
+    private string GetStatusBadgeClass(RegistrationStatus status)
+    {
+        return status switch
+        {
+            RegistrationStatus.Pending => "bg-warning text-dark",
+            RegistrationStatus.Confirmed => "bg-info",
+            RegistrationStatus.Paid => "bg-success",
+            RegistrationStatus.Cancelled => "bg-secondary",
+            _ => "bg-secondary"
+        };
+    }
+
+    private string GetStatusText(RegistrationStatus status)
+    {
+        return status switch
+        {
+            RegistrationStatus.Pending => "Čeká",
+            RegistrationStatus.Confirmed => "Potvrzeno",
+            RegistrationStatus.Paid => "Zaplaceno",
+            RegistrationStatus.Cancelled => "Zrušeno",
+            _ => "Neznámý"
+        };
+    }
+}
+
+<style>
+    .stat-icon {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .modal.show {
+        display: block !important;
+    }
+</style>

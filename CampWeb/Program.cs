@@ -201,7 +201,7 @@ static async Task SeedUsersAsync(UserManager<ApplicationUser> userManager,
     RoleManager<IdentityRole> roleManager, ILogger logger)
 {
     // Create admin user
-    var adminEmail = "admin@letnítabory.cz";
+    var adminEmail = "admin@letnitabory.cz"; // Odstraněno "í"
     var adminUser = await userManager.FindByEmailAsync(adminEmail);
 
     if (adminUser == null)
@@ -230,6 +230,7 @@ static async Task SeedUsersAsync(UserManager<ApplicationUser> userManager,
                 string.Join(", ", result.Errors.Select(e => e.Description)));
         }
     }
+
 
     // Create parent user
     var parentEmail = "rodic@example.com";
@@ -275,7 +276,7 @@ static async Task SeedCampsAsync(ApplicationDbContext context, ILogger logger)
                 Location = "Šumava, České Budějovice",
                 Type = "Přírodní",
                 Price = 4500,
-                AvailableSpots = 20,
+                AvailableSpots = 15,
                 AgeGroup = "8-14 let",
                 ShortDescription = "Týden plný dobrodružství v krásné přírodě Šumavy",
                 Description = "Přijďte si užít týden plný dobrodružství v nádherné přírodě Šumavy. Program zahrnuje turistiku, táboráky, hry v přírodě a spoustu zábavy.",
@@ -283,7 +284,9 @@ static async Task SeedCampsAsync(ApplicationDbContext context, ILogger logger)
                 Longitude = 13.3256,
                 Activities = new List<string> { "Turistika", "Táboráky", "Hry v přírodě", "Orientační běh" },
                 StartDate = DateTime.UtcNow.AddDays(30),
-                EndDate = DateTime.UtcNow.AddDays(37)
+                EndDate = DateTime.UtcNow.AddDays(37),
+                Capacity = 15
+
             },
             new Camp
             {
@@ -291,7 +294,7 @@ static async Task SeedCampsAsync(ApplicationDbContext context, ILogger logger)
                 Location = "Plzeň, sportovní areál",
                 Type = "Sportovní",
                 Price = 3800,
-                AvailableSpots = 25,
+                AvailableSpots = 15,
                 AgeGroup = "10-16 let",
                 ShortDescription = "Tábor zaměřený na různé sportovní aktivity",
                 Description = "Sportovní tábor pro všechny milovníky pohybu. Fotbal, basketbal, atletika, plavání a mnoho dalšího.",
@@ -299,7 +302,9 @@ static async Task SeedCampsAsync(ApplicationDbContext context, ILogger logger)
                 Longitude = 13.3736,
                 Activities = new List<string> { "Fotbal", "Basketbal", "Atletika", "Plavání", "Volejbal" },
                 StartDate = DateTime.UtcNow.AddDays(45),
-                EndDate = DateTime.UtcNow.AddDays(52)
+                EndDate = DateTime.UtcNow.AddDays(52),
+                Capacity = 15
+
             },
             new Camp
             {
@@ -315,7 +320,8 @@ static async Task SeedCampsAsync(ApplicationDbContext context, ILogger logger)
                 Longitude = 13.3778,
                 Activities = new List<string> { "Chemické experimenty", "Fyzikální pokusy", "Astronomie", "Biologie" },
                 StartDate = DateTime.UtcNow.AddDays(60),
-                EndDate = DateTime.UtcNow.AddDays(67)
+                EndDate = DateTime.UtcNow.AddDays(67),
+                Capacity = 15
             }
         };
 
