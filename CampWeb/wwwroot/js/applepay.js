@@ -1,208 +1,184 @@
-﻿// Apple Pay Configuration
+﻿// Apple Pay (only JS + Blazor interop; žádný serverový controller není nutný)
 let applePaySession = null;
 let applePayDotNetRef = null;
 let applePaymentData = null;
 
-// Check if Apple Pay is available
-window.checkApplePayAvailability = function() {
-    if (window.ApplePaySession) {
-        const merchantIdentifier = 'merchant.com.letnitabory'; // Replace with your merchant ID
-        const promise = ApplePaySession.canMakePaymentsWithActiveCard(merchantIdentifier);
-        return promise.then(function(canMakePayments) {
-            return canMakePayments;
-        });
-    }
-    return Promise.resolve(false);
+window.updateApplePayContainer = function (html) {
+    const el = document.getElementById('apple-pay-button-container');
+    if (el) el.innerHTML = html || '';
 };
 
-// Initialize Apple Pay
-window.initializeApplePay = function(paymentData, dotNetReference) {
-    console.log('Initializing Apple Pay with data:', paymentData);
-
+// Blazor volá: initializeApplePay(paymentData, DotNetObjectReference)
+window.initializeApplePay = function (paymentData, dotNetReference) {
     applePayDotNetRef = dotNetReference;
-    applePaymentData = paymentData;
+    applePaymentData = paymentData || {};
 
-    // Check if Apple Pay is available
     if (!window.ApplePaySession) {
-        console.log('Apple Pay is not available in this browser');
-        updateApplePayContainer('<div class="text-muted small text-center"><i class="fas fa-exclamation-circle me-1"></i>Apple Pay není k dispozici</div>');
+        console.warn('Apple Pay není v tomto prohlížeči k dispozici.');
+        updateApplePayContainer(
+            '<div class="text-muted small text-center"><i class="fas fa-exclamation-circle me-1"></i>Apple Pay není k dispozici</div>'
+        );
+        if (applePayDotNetRef) {
+            applePayDotNetRef.invokeMethodAsync('OnApplePayError', 'Apple Pay není k dispozici').catch(() => {});
+        }
         return;
     }
 
-    // Check if the device supports Apple Pay
+    // Zobraz tlačítko jen pokud zařízení podporuje Apple Pay
     if (ApplePaySession.canMakePayments()) {
         addApplePayButton();
     } else {
-        console.log('Apple Pay is not supported on this device');
-        updateApplePayContainer('<div class="text-muted small text-center"><i class="fas fa-info-circle me-1"></i>Apple Pay není podporován</div>');
+        console.warn('Zařízení Apple Pay nepodporuje.');
+        updateApplePayContainer(
+            '<div class="text-muted small text-center"><i class="fas fa-info-circle me-1"></i>Apple Pay není podporován</div>'
+        );
+        if (applePayDotNetRef) {
+            applePayDotNetRef.invokeMethodAsync('OnApplePayError', 'Apple Pay není podporován').catch(() => {});
+        }
     }
 };
 
 function addApplePayButton() {
     const container = document.getElementById('apple-pay-button-container');
-    if (container) {
-        container.innerHTML = '';
+    if (!container) return;
 
-        // Create Apple Pay button
-        const button = document.createElement('div');
-        button.className = 'apple-pay-button apple-pay-button-black';
-        button.onclick = onApplePayButtonClicked;
+    container.innerHTML = '';
 
-        container.appendChild(button);
-        console.log('Apple Pay button added successfully');
+    const btn = document.createElement('div');
+    btn.className = 'apple-pay-button apple-pay-button-black';
+    btn.addEventListener('click', onApplePayButtonClicked);
 
-        if (applePayDotNetRef) {
-            applePayDotNetRef.invokeMethodAsync('OnApplePayReady')
-                .catch(function(error) {
-                    console.error('Error calling OnApplePayReady:', error);
-                });
-        }
+    container.appendChild(btn);
+
+    if (applePayDotNetRef) {
+        applePayDotNetRef.invokeMethodAsync('OnApplePayReady').catch(() => {});
     }
 }
 
 function onApplePayButtonClicked() {
-    console.log('Apple Pay button clicked');
+    if (!applePaymentData) return;
 
-    if (!applePaymentData) {
-        console.error('Payment data not available');
-        return;
-    }
+    const merchantId = applePaymentData.merchantId || 'merchant.invalid';
+    const amount = String(applePaymentData.amount || '0.00');
+    const currency = applePaymentData.currency || 'CZK';
+    const description = applePaymentData.description || 'Platba';
 
     const request = {
         countryCode: 'CZ',
-        currencyCode: applePaymentData.currency || 'CZK',
-        supportedNetworks: ['visa', 'masterCard', 'amex'],
+        currencyCode: currency,
+        supportedNetworks: ['visa', 'masterCard'],
         merchantCapabilities: ['supports3DS'],
+        merchantIdentifier: merchantId,
         total: {
-            label: applePaymentData.description || 'Letní Tábory Plzeň',
-            amount: applePaymentData.amount
-        }
+            label: description,
+            amount: amount
+        },
+        lineItems: [
+            { label: description, amount: amount, type: 'final' }
+        ],
+        requiredBillingContactFields: [],
+        requiredShippingContactFields: []
     };
 
-    // Create Apple Pay session (version 3)
     const session = new ApplePaySession(3, request);
+    applePaySession = session;
 
-    // Merchant validation
-    session.onvalidatemerchant = function(event) {
-        console.log('Validating merchant:', event.validationURL);
+    // Merchant validation — **žádný controller nepotřebujeme**: voláme JSInvokable v Razor komponentě
+    session.onvalidatemerchant = function (event) {
+        // 1) preferujeme Blazor metodu (ValidateApplePayMerchant)
+        if (applePayDotNetRef && typeof applePayDotNetRef.invokeMethodAsync === 'function') {
+            applePayDotNetRef.invokeMethodAsync('ValidateApplePayMerchant', event.validationURL)
+                .then(function (merchantSessionJson) {
+                    let merchantSession = merchantSessionJson;
+                    // pokud Blazor vrátil string, zkusíme parse
+                    if (typeof merchantSessionJson === 'string') {
+                        try { merchantSession = JSON.parse(merchantSessionJson); } catch (e) {}
+                    }
+                    if (!merchantSession || typeof merchantSession !== 'object') {
+                        throw new Error('Neplatná merchant session');
+                    }
+                    session.completeMerchantValidation(merchantSession);
+                })
+                .catch(function (err) {
+                    console.error('Merchant validation selhala:', err);
+                    session.abort();
+                    if (applePayDotNetRef) {
+                        applePayDotNetRef.invokeMethodAsync('OnApplePayError', 'Merchant validation failed').catch(() => {});
+                    }
+                });
+            return;
+        }
 
-        // Call your backend API to validate with Apple
+        // 2) fallback – pokud by existovalo API (nevyžadováno)
         fetch('/api/applepay/validate-merchant', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                validationUrl: event.validationURL
-            })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ validationUrl: event.validationURL })
         })
-            .then(function(response) {
-                if (!response.ok) {
-                    throw new Error('Merchant validation failed');
-                }
-                return response.json();
-            })
-            .then(function(merchantSession) {
-                console.log('Merchant session received:', merchantSession);
-                session.completeMerchantValidation(merchantSession);
-            })
-            .catch(function(error) {
-                console.error('Merchant validation failed:', error);
+            .then(r => r.ok ? r.json() : Promise.reject(new Error('Merchant validation failed')))
+            .then(ms => session.completeMerchantValidation(ms))
+            .catch(err => {
+                console.error('Merchant validation selhala:', err);
                 session.abort();
                 if (applePayDotNetRef) {
-                    applePayDotNetRef.invokeMethodAsync('OnApplePayError', 'Merchant validation failed')
-                        .catch(function(err) {
-                            console.error('Error calling OnApplePayError:', err);
-                        });
+                    applePayDotNetRef.invokeMethodAsync('OnApplePayError', 'Merchant validation failed').catch(() => {});
                 }
             });
     };
 
-    // Payment method selected
-    session.onpaymentmethodselected = function(event) {
-        console.log('Payment method selected:', event.paymentMethod);
-        const total = {
-            label: applePaymentData.description || 'Letní Tábory Plzeň',
-            amount: applePaymentData.amount
-        };
-        session.completePaymentMethodSelection(total);
+    // Uživatel vybral kartu – můžeme aktualizovat total (volitelné)
+    session.onpaymentmethodselected = function () {
+        session.completePaymentMethodSelection({
+            label: description,
+            amount: amount
+        });
     };
 
-    // Payment authorized
-    session.onpaymentauthorized = function(event) {
-        console.log('Payment authorized:', event.payment);
-
-        if (applePayDotNetRef) {
-            // Send payment token to server
-            const paymentToken = JSON.stringify(event.payment.token);
-
-            applePayDotNetRef.invokeMethodAsync('ProcessApplePayPayment', paymentToken)
-                .then(function() {
-                    // Payment successful
-                    session.completePayment(ApplePaySession.STATUS_SUCCESS);
-                })
-                .catch(function(error) {
-                    // Payment failed
-                    console.error('Payment processing failed:', error);
-                    session.completePayment(ApplePaySession.STATUS_FAILURE);
-                });
-        } else {
+    // Uživatel autorizoval platbu – token odešleme do Blazoru
+    session.onpaymentauthorized = function (ev) {
+        try {
+            const paymentToken = JSON.stringify(ev.payment.token);
+            if (applePayDotNetRef) {
+                applePayDotNetRef.invokeMethodAsync('ProcessApplePayPayment', paymentToken)
+                    .then(function () {
+                        session.completePayment(ApplePaySession.STATUS_SUCCESS);
+                    })
+                    .catch(function (error) {
+                        console.error('Chyba při zpracování platby:', error);
+                        session.completePayment(ApplePaySession.STATUS_FAILURE);
+                    });
+            } else {
+                session.completePayment(ApplePaySession.STATUS_FAILURE);
+            }
+        } catch (e) {
+            console.error('Apple Pay token error:', e);
             session.completePayment(ApplePaySession.STATUS_FAILURE);
         }
     };
 
-    // Handle cancel
-    session.oncancel = function(event) {
-        console.log('Apple Pay cancelled');
-        if (applePayDotNetRef) {
-            applePayDotNetRef.invokeMethodAsync('OnApplePayError', 'Payment cancelled')
-                .catch(function(error) {
-                    console.error('Error calling OnApplePayError:', error);
-                });
-        }
+    session.oncancel = function () {
+        console.log('Apple Pay zrušeno uživatelem.');
     };
 
-    // Begin session
     session.begin();
-    applePaySession = session;
 }
 
-// Utility function to update container
-function updateApplePayContainer(html) {
-    const container = document.getElementById('apple-pay-button-container');
-    if (container) {
-        container.innerHTML = html;
-    }
+// Minimal styl tlačítka (nativní -apple-pay-button s fallbackem)
+(function ensureAppleStyles() {
+    const style = document.createElement('style');
+    style.textContent = `
+.apple-pay-button {
+    display: inline-block;
+    -webkit-appearance: -apple-pay-button;
+    -apple-pay-button-type: buy;
+    -apple-pay-button-style: black;
+    width: 200px;
+    height: 44px;
+    border-radius: 8px;
+    cursor: pointer;
 }
-
-// Add Apple Pay button styles
-const style = document.createElement('style');
-style.textContent = `
-    .apple-pay-button {
-        display: inline-block;
-        -webkit-appearance: -apple-pay-button;
-        -apple-pay-button-type: pay;
-        width: 100%;
-        height: 50px;
-        cursor: pointer;
-    }
-    
-    .apple-pay-button-black {
-        -apple-pay-button-style: black;
-    }
-    
-    .apple-pay-button-white {
-        -apple-pay-button-style: white;
-    }
-    
-    .apple-pay-button-white-outline {
-        -apple-pay-button-style: white-outline;
-    }
-    
-    @supports not (-webkit-appearance: -apple-pay-button) {
-        .apple-pay-button {
-            display: none;
-        }
-    }
-`;
-document.head.appendChild(style);
+@supports not (-webkit-appearance: -apple-pay-button) {
+    .apple-pay-button { display: none; }
+}`;
+    document.head.appendChild(style);
+})();

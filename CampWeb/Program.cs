@@ -36,6 +36,10 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(dataSource)
         .ConfigureWarnings(warnings =>
             warnings.Ignore(RelationalEventId.PendingModelChangesWarning)));
+builder.Services.AddDbContextFactory<ApplicationDbContext>(
+    options => options.UseNpgsql(dataSource)
+        .ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning)),
+    ServiceLifetime.Scoped);
 
 // BEST PRACTICE: Use AddIdentity instead of AddDefaultIdentity for custom user class
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
@@ -88,6 +92,7 @@ builder.Services.AddScoped<ICampService, CampService>();
 builder.Services.AddScoped<IRegistrationService, RegistrationService>();
 builder.Services.AddScoped<IPhotoService, PhotoService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
+builder.Services.AddScoped<ITimelineService, TimelineService>();
 
 // Add logging
 builder.Services.AddLogging(logging =>

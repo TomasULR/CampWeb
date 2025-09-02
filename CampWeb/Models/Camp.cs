@@ -61,6 +61,8 @@ public class Camp
     
     [NotMapped]
     public int DaysLeft => (StartDate - DateTime.Now).Days;
+    [MaxLength(8)]
+    public string? AccessCode { get; set; }
 }
 
 public class Registration
@@ -181,4 +183,5 @@ public class LiveUpdate
 
     // Navigation property
     public virtual Camp Camp { get; set; } = null!;
+    public bool HasPhoto { get; set; }
 }

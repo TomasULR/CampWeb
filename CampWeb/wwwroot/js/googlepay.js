@@ -1,269 +1,149 @@
-﻿// Google Pay API Configuration
-const baseRequest = {
-    apiVersion: 2,
-    apiVersionMinor: 0
-};
-let initializationRetries = 0;
-const maxRetries = 20;
-const retryDelay = 500;
-const allowedCardNetworks = ["MASTERCARD", "VISA"];
-const allowedCardAuthMethods = ["PAN_ONLY", "CRYPTOGRAM_3DS"];
-
-const tokenizationSpecification = {
-    type: 'PAYMENT_GATEWAY',
-    parameters: {
-        'gateway': 'example',
-        'gatewayMerchantId': 'exampleGatewayMerchantId'
-    }
-};
-
-const baseCardPaymentMethod = {
-    type: 'CARD',
-    parameters: {
-        allowedAuthMethods: allowedCardAuthMethods,
-        allowedCardNetworks: allowedCardNetworks
-    }
-};
-
-const cardPaymentMethod = Object.assign(
-    {},
-    baseCardPaymentMethod,
-    {
-        tokenizationSpecification: tokenizationSpecification
-    }
-);
-
+﻿// Google Pay – čistý JS + Blazor interop (bez změn backendu)
 let paymentsClient = null;
 let dotNetRef = null;
 let currentPaymentData = null;
 
-function getGoogleIsReadyToPayRequest() {
-    return Object.assign(
-        {},
-        baseRequest,
-        {
-            allowedPaymentMethods: [baseCardPaymentMethod]
+window.updateGooglePayContainer = function (html) {
+    const el = document.getElementById('google-pay-button-container');
+    if (el) el.innerHTML = html || '';
+};
+
+function loadGooglePayApi() {
+    return new Promise(function (resolve, reject) {
+        if (typeof google !== 'undefined' && google.payments && google.payments.api) {
+            resolve();
+            return;
         }
-    );
-}
-
-function getGooglePaymentDataRequest(paymentData) {
-    const paymentDataRequest = Object.assign({}, baseRequest);
-    paymentDataRequest.allowedPaymentMethods = [cardPaymentMethod];
-    paymentDataRequest.transactionInfo = {
-        totalPriceStatus: 'FINAL',
-        totalPriceLabel: 'Celkem',
-        totalPrice: paymentData.amount,
-        currencyCode: paymentData.currency || 'CZK',
-        countryCode: 'CZ'
-    };
-    paymentDataRequest.merchantInfo = {
-        merchantName: 'Letní Tábory Plzeň'
-        // merchantId is only needed in production
-    };
-
-    return paymentDataRequest;
-}
-
-function getGooglePaymentsClient() {
-    if (paymentsClient === null) {
-        paymentsClient = new google.payments.api.PaymentsClient({
-            environment: 'TEST' // Change to 'PRODUCTION' when going live
-        });
-    }
-    return paymentsClient;
-}
-
-function onPaymentAuthorized(paymentData) {
-    return new Promise(function(resolve, reject) {
-        console.log('Payment authorized:', paymentData);
-        processPayment(paymentData)
-            .then(function() {
-                resolve({ transactionState: 'SUCCESS' });
-            })
-            .catch(function(error) {
-                console.error('Payment processing failed:', error);
-                resolve({
-                    transactionState: 'ERROR',
-                    error: {
-                        intent: 'PAYMENT_AUTHORIZATION',
-                        message: 'Platba se nezdařila. Zkuste to prosím znovu.',
-                        reason: 'PAYMENT_DECLINED'
-                    }
-                });
-            });
+        const script = document.createElement('script');
+        script.async = true;
+        script.src = 'https://pay.google.com/gp/p/js/pay.js';
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('Nepodařilo se načíst Google Pay API'));
+        document.head.appendChild(script);
     });
 }
 
-function processPayment(paymentData) {
-    return new Promise(function(resolve, reject) {
-        try {
-            const paymentToken = paymentData.paymentMethodData.tokenizationData.token;
-            console.log('Processing payment with token...');
-
-            if (dotNetRef) {
-                dotNetRef.invokeMethodAsync('ProcessGooglePayPayment', paymentToken)
-                    .then(function() {
-                        console.log('Payment processed successfully');
-                        resolve();
-                    })
-                    .catch(function(error) {
-                        console.error('Payment processing error:', error);
-                        reject(error);
-                    });
-            } else {
-                console.error('DotNet reference not available');
-                reject('DotNet reference not available');
-            }
-        } catch (error) {
-            console.error('Error in processPayment:', error);
-            reject(error);
-        }
-    });
+function getBaseRequest() {
+    return { apiVersion: 2, apiVersionMinor: 0 };
 }
 
-function onGooglePaymentButtonClicked() {
-    console.log('Google Pay button clicked');
+function getTokenizationSpecification() {
+    // ponecháváme 'example' – backend to může přijmout jako test
+    return {
+        type: 'PAYMENT_GATEWAY',
+        parameters: {
+            gateway: 'example',
+            gatewayMerchantId: 'exampleGatewayMerchantId'
+        }
+    };
+}
 
-    if (!currentPaymentData) {
-        console.error('Payment data not available');
+function getAllowedCardAuthMethods() { return ['PAN_ONLY', 'CRYPTOGRAM_3DS']; }
+function getAllowedCardNetworks() { return ['VISA', 'MASTERCARD']; }
+
+function getCardPaymentMethod() {
+    return {
+        type: 'CARD',
+        parameters: {
+            allowedAuthMethods: getAllowedCardAuthMethods(),
+            allowedCardNetworks: getAllowedCardNetworks(),
+            billingAddressRequired: false
+        },
+        tokenizationSpecification: getTokenizationSpecification()
+    };
+}
+
+// Blazor volá: initializeGooglePay(paymentData, DotNetObjectReference)
+window.initializeGooglePay = async function (paymentData, dotNetReference) {
+    dotNetRef = dotNetReference;
+    currentPaymentData = paymentData || {};
+
+    try {
+        await loadGooglePayApi();
+    } catch (e) {
+        console.error(e);
+        updateGooglePayContainer(
+            '<div class="text-muted small text-center"><i class="fas fa-exclamation-circle me-1"></i>Google Pay API není k dispozici</div>'
+        );
+        if (dotNetRef) dotNetRef.invokeMethodAsync('OnGooglePayError', 'Google Pay API není k dispozici').catch(() => {});
         return;
     }
 
-    const paymentDataRequest = getGooglePaymentDataRequest(currentPaymentData);
-    const paymentsClient = getGooglePaymentsClient();
-
-    paymentsClient.loadPaymentData(paymentDataRequest)
-        .then(function(paymentData) {
-            console.log('Payment data loaded successfully');
-            return onPaymentAuthorized(paymentData);
-        })
-        .then(function(result) {
-            if (result.transactionState === 'SUCCESS') {
-                console.log('Transaction successful');
-            } else {
-                console.error('Transaction failed:', result.error);
-            }
-        })
-        .catch(function(err) {
-            console.error('Load payment data error:', err);
-            if (dotNetRef) {
-                let errorMessage = 'Payment failed';
-                if (err.statusCode === 'CANCELED') {
-                    errorMessage = 'Payment canceled';
-                } else if (err.statusMessage) {
-                    errorMessage = err.statusMessage;
-                }
-                dotNetRef.invokeMethodAsync('OnGooglePayError', errorMessage)
-                    .catch(function(error) {
-                        console.error('Error calling OnGooglePayError:', error);
-                    });
-            }
-        });
-}
-
-function addGooglePayButton() {
     try {
-        const paymentsClient = getGooglePaymentsClient();
+        paymentsClient = new google.payments.api.PaymentsClient({
+            environment: (currentPaymentData.environment || 'TEST').toUpperCase()
+        });
+
+        const isReadyToPayReq = Object.assign({}, getBaseRequest(), {
+            allowedPaymentMethods: [ getCardPaymentMethod() ]
+        });
+
+        const response = await paymentsClient.isReadyToPay(isReadyToPayReq);
+
+        if (!response.result) {
+            updateGooglePayContainer(
+                '<div class="text-muted small text-center"><i class="fas fa-info-circle me-1"></i>Google Pay není podporován na tomto zařízení</div>'
+            );
+            if (dotNetRef) dotNetRef.invokeMethodAsync('OnGooglePayError', 'Google Pay není podporován').catch(() => {});
+            return;
+        }
+
+        // vykresli tlačítko
         const button = paymentsClient.createButton({
-            onClick: onGooglePaymentButtonClicked,
-            buttonColor: 'black',
-            buttonType: 'pay',
-            buttonSizeMode: 'fill'
+            onClick: onGooglePayButtonClicked
         });
 
         const container = document.getElementById('google-pay-button-container');
-        if (container) {
-            container.innerHTML = '';
-            container.appendChild(button);
+        if (!container) return;
 
-            if (dotNetRef) {
-                dotNetRef.invokeMethodAsync('OnGooglePayReady')
-                    .catch(function(error) {
-                        console.error('Error calling OnGooglePayReady:', error);
-                    });
+        container.innerHTML = '';
+        container.appendChild(button);
+
+        if (dotNetRef) dotNetRef.invokeMethodAsync('OnGooglePayReady').catch(() => {});
+    } catch (err) {
+        console.error('Chyba při inicializaci Google Pay:', err);
+        updateGooglePayContainer(
+            '<div class="text-muted small text-center"><i class="fas fa-exclamation-circle me-1"></i>Chyba při načítání Google Pay</div>'
+        );
+        if (dotNetRef) dotNetRef.invokeMethodAsync('OnGooglePayError', 'Inicializace selhala').catch(() => {});
+    }
+};
+
+async function onGooglePayButtonClicked() {
+    try {
+        const price = String(currentPaymentData?.amount || '0.00');
+        const currency = currentPaymentData?.currency || 'CZK';
+        const description = currentPaymentData?.description || 'Platba';
+
+        const paymentDataRequest = Object.assign({}, getBaseRequest(), {
+            allowedPaymentMethods: [ getCardPaymentMethod() ],
+            transactionInfo: {
+                totalPriceStatus: 'FINAL',
+                totalPrice: price,
+                currencyCode: currency,
+                countryCode: 'CZ'
+            },
+            merchantInfo: {
+                merchantId: currentPaymentData?.merchantId || '01234567890123456789',
+                merchantName: description
             }
+        });
 
-            console.log('Google Pay button added successfully');
-        } else {
-            console.error('Google Pay button container not found');
+        const paymentData = await paymentsClient.loadPaymentData(paymentDataRequest);
+
+        // token do Blazoru
+        const token = paymentData.paymentMethodData?.tokenizationData?.token;
+        if (token && dotNetRef) {
+            await dotNetRef.invokeMethodAsync('ProcessGooglePayPayment', token);
         }
-    } catch (error) {
-        console.error('Error creating Google Pay button:', error);
+    } catch (err) {
+        if (err && err.statusCode === 'CANCELED') {
+            // uživatel zrušil – nehlásíme chybu
+            return;
+        }
+        console.error('Google Pay error:', err);
         if (dotNetRef) {
-            dotNetRef.invokeMethodAsync('OnGooglePayError', error.message || 'Button creation failed')
-                .catch(function(err) {
-                    console.error('Error calling OnGooglePayError:', err);
-                });
+            dotNetRef.invokeMethodAsync('OnGooglePayError', err.message || 'Chyba při zpracování').catch(() => {});
         }
     }
 }
-
-// Utility function
-window.updateGooglePayContainer = function(html) {
-    const container = document.getElementById('google-pay-button-container');
-    if (container) {
-        container.innerHTML = html;
-    }
-};
-
-// Main initialization function
-window.initializeGooglePay = function(paymentData, dotNetReference) {
-    console.log('Initializing Google Pay with data:', paymentData);
-
-    // Store references
-    dotNetRef = dotNetReference;
-    currentPaymentData = paymentData;
-
-    // Check if Google Pay API is available
-    if (typeof google === 'undefined' || !google.payments || !google.payments.api) {
-        console.error('Google Pay API is not loaded');
-        window.updateGooglePayContainer('<div class="text-muted small text-center"><i class="fas fa-exclamation-circle me-1"></i>Google Pay API není k dispozici</div>');
-        if (dotNetRef) {
-            dotNetRef.invokeMethodAsync('OnGooglePayError', 'Google Pay API není k dispozici')
-                .catch(function(error) {
-                    console.error('Error calling OnGooglePayError:', error);
-                });
-        }
-        return;
-    }
-
-    try {
-        const paymentsClient = getGooglePaymentsClient();
-        paymentsClient.isReadyToPay(getGoogleIsReadyToPayRequest())
-            .then(function(response) {
-                console.log('Google Pay readiness response:', response);
-                if (response.result) {
-                    addGooglePayButton();
-                } else {
-                    console.log('Google Pay is not available');
-                    window.updateGooglePayContainer('<div class="text-muted small text-center"><i class="fas fa-info-circle me-1"></i>Google Pay není podporován na tomto zařízení</div>');
-                    if (dotNetRef) {
-                        dotNetRef.invokeMethodAsync('OnGooglePayError', 'Google Pay není podporován')
-                            .catch(function(error) {
-                                console.error('Error calling OnGooglePayError:', error);
-                            });
-                    }
-                }
-            })
-            .catch(function(err) {
-                console.error('Error determining Google Pay availability:', err);
-                window.updateGooglePayContainer('<div class="text-muted small text-center"><i class="fas fa-exclamation-circle me-1"></i>Chyba při načítání Google Pay</div>');
-                if (dotNetRef) {
-                    dotNetRef.invokeMethodAsync('OnGooglePayError', err.message || 'Google Pay initialization failed')
-                        .catch(function(error) {
-                            console.error('Error calling OnGooglePayError:', error);
-                        });
-                }
-            });
-    } catch (error) {
-        console.error('Error in initializeGooglePay:', error);
-        window.updateGooglePayContainer('<div class="text-muted small text-center"><i class="fas fa-exclamation-circle me-1"></i>Chyba inicializace</div>');
-        if (dotNetRef) {
-            dotNetRef.invokeMethodAsync('OnGooglePayError', error.message || 'Initialization error')
-                .catch(function(err) {
-                    console.error('Error calling OnGooglePayError:', err);
-                });
-        }
-    }
-};

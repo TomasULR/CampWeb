@@ -1,211 +1,368 @@
 @page "/admin"
-@page "/admin/dashboard"
-@layout AdminLayout
 @using CampWeb.Models
-@using CampWeb.Services
+@using Microsoft.AspNetCore.Components.QuickGrid
 @inject ICampService CampService
-@attribute [Authorize(Roles = "Admin")]
+@attribute [Authorize(Roles="Admin,SuperAdmin")]
+@layout AdminLayout
+@rendermode InteractiveServer
+<h1 class="h4 mb-4">Přehled administrace</h1>
 
-<PageTitle>Dashboard - Admin Panel</PageTitle>
-
-<div class="container-fluid">
-    <div class="row mb-4">
-        <div class="col-12">
-            <h1 class="h3 mb-0 text-gray-800">Dashboard</h1>
-            <p class="mb-0">Přehled administrace letních táborů</p>
-        </div>
-    </div>
-
-    <!-- Statistics Cards -->
-    <div class="row">
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-primary shadow h-100 py-2">
+@if (loading)
+{
+    <div class="text-muted py-5"><span class="spinner-border me-2"></span>Načítám…</div>
+}
+else
+{
+    <!-- KPI -->
+    <div class="row g-3">
+        <div class="col-6 col-lg-3">
+            <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
-                                Celkem táborů
-                            </div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">@totalCamps</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-campground fa-2x text-gray-300"></i>
-                        </div>
-                    </div>
+                    <div class="text-muted small">Tábory (letos)</div>
+                    <div class="h3 mb-1">@campsThisYearCount</div>
+                    <div class="text-muted small">@DateTime.Now.Year</div>
                 </div>
             </div>
         </div>
-
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-success shadow h-100 py-2">
+        <div class="col-6 col-lg-3">
+            <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
-                                Registrací
-                            </div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">@totalRegistrations</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-users fa-2x text-gray-300"></i>
-                        </div>
-                    </div>
+                    <div class="text-muted small">Registrací (letos)</div>
+                    <div class="h3 mb-1">@regsTotal</div>
+                    <div class="text-muted small">Z toho zaplacených: @regsPaid</div>
                 </div>
             </div>
         </div>
-
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-info shadow h-100 py-2">
+        <div class="col-6 col-lg-3">
+            <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
-                                Volná místa
-                            </div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">@availableSpots</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-chair fa-2x text-gray-300"></i>
-                        </div>
-                    </div>
+                    <div class="text-muted small">Odhad tržeb (letos)</div>
+                    <div class="h3 mb-1">@FormatCurrency(revenueCzk)</div>
+                    <div class="text-muted small">počítáno z Paid × cena tábora</div>
                 </div>
             </div>
         </div>
-
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-warning shadow h-100 py-2">
+        <div class="col-6 col-lg-3">
+            <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
-                                Celkový příjem
-                            </div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">@totalRevenue.ToString("N0") Kč</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-dollar-sign fa-2x text-gray-300"></i>
-                        </div>
+                    <div class="text-muted small">Průměrná obsazenost</div>
+                    <div class="h3 mb-1">@($"{avgOccupancy:P0}")</div>
+                    <div class="progress" role="progressbar" aria-valuenow="@(avgOccupancy * 100)" aria-valuemin="0" aria-valuemax="100">
+                        <div class="progress-bar" style="width:@($"{avgOccupancy * 100:F0}%")"></div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Recent Registrations -->
-    <div class="row">
-        <div class="col-12">
-            <div class="card shadow mb-4">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">Poslední registrace</h6>
-                </div>
-                <div class="card-body">
-                    @if (recentRegistrations.Any())
+    <!-- Trend 6 týdnů -->
+    <div class="card border-0 shadow-sm my-4">
+        <div class="card-header bg-white">
+            <strong>Registrace – posledních 6 týdnů</strong>
+        </div>
+        <div class="card-body">
+            @if (weekly.Any())
+            {
+                <div class="row g-2">
+                    @foreach (var w in weekly)
                     {
-                    <div class="table-responsive">
-                        <table class="table table-bordered">
-                            <thead>
-                            <tr>
-                                <th>Dítě</th>
-                                <th>Tábor</th>
-                                <th>Rodič</th>
-                                <th>Datum</th>
-                                <th>Status</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            @foreach (var reg in recentRegistrations.Take(10))
-                            {
-                            <tr>
-                                <td>@reg.ChildFullName</td>
-                                <td>@reg.Camp.Name</td>
-                                <td>@reg.ParentName</td>
-                                <td>@reg.RegistrationDate.ToString("dd.MM.yyyy HH:mm")</td>
-                                <td>
-                                                <span class="badge @GetStatusBadgeClass(reg.Status)">
-                                                    @GetStatusText(reg.Status)
-                                                </span>
-                                </td>
-                            </tr>
-                            }
-                            </tbody>
-                        </table>
-                    </div>
+                        var max = Math.Max(1, weekly.Max(x => x.Registrations)); // normalizace
+                        var regPct = Math.Clamp((double)w.Registrations / max, 0, 1);
+                        var paidPct = Math.Clamp((double)w.Paid / max, 0, 1);
+                        <div class="col-6 col-lg-2">
+                            <div class="small text-muted">@w.WeekStart.ToString("dd.MM.")</div>
+                            <div class="bar">
+                                <div class="bar-bg"></div>
+                                <div class="bar-reg" style="height:@($"{regPct * 100:F0}%")" title="Registrací: @w.Registrations"></div>
+                                <div class="bar-paid" style="height:@($"{paidPct * 100:F0}%")" title="Zaplacených: @w.Paid"></div>
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="small text-muted mt-2">Modrá = registrace, Zelená = zaplaceno</div>
+            }
+            else
+            {
+                <div class="text-muted">Zatím žádná data</div>
+            }
+        </div>
+    </div>
+
+    <!-- TOP tábory -->
+    <div class="row g-3">
+        <div class="col-12 col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white"><strong>Top obsazenost</strong></div>
+                <div class="card-body">
+                    @if (topOccupancy.Any())
+                    {
+                        @foreach (var c in topOccupancy)
+                        {
+                            var occ = Occupancy(c);
+                            <div class="mb-2">
+                                <div class="d-flex justify-content-between">
+                                    <div class="text-truncate me-2" title="@c.Name">@c.Name</div>
+                                    <div class="text-muted small">@($"{occ:P0}")</div>
+                                </div>
+                                <div class="progress" role="progressbar" aria-valuenow="@(occ * 100)">
+                                    <div class="progress-bar" style="width:@($"{occ * 100:F0}%")"></div>
+                                </div>
+                            </div>
+                        }
                     }
                     else
                     {
-                    <p class="text-muted">Zatím žádné registrace</p>
+                        <div class="text-muted">Žádná data</div>
                     }
                 </div>
             </div>
+        </div>
+        <div class="col-12 col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white"><strong>Top tržby (odhad)</strong></div>
+                <div class="card-body">
+                    @if (topRevenue.Any())
+                    {
+                        @foreach (var c in topRevenue)
+                        {
+                            var rev = RevenueFor(c);
+                            <div class="d-flex justify-content-between">
+                                <div class="text-truncate me-2" title="@c.Name">@c.Name</div>
+                                <div class="text-muted">@FormatCurrency(rev)</div>
+                            </div>
+                            <div class="mini-line"></div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="text-muted">Žádná data</div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabulka táborů (čistý Blazor, bez QuickGridu) -->
+    <div class="card border-0 shadow-sm my-4">
+        <div class="card-header bg-white">
+            <strong>Tábory – detail</strong>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead>
+                    <tr>
+                        <th>
+                            <button class="btn btn-link p-0 text-decoration-none"
+                                    @onclick="@(() => SortBy(nameof(Camp.Name)))">
+                                Název @SortGlyph(nameof(Camp.Name))
+                            </button>
+                        </th>
+
+                        <th>
+                            <button class="btn btn-link p-0 text-decoration-none"
+                                    @onclick="@(() => SortBy(nameof(Camp.Location)))">
+                                Místo @SortGlyph(nameof(Camp.Location))
+                            </button>
+                        </th>
+
+                        <th>
+                            <button class="btn btn-link p-0 text-decoration-none"
+                                    @onclick="@(() => SortBy(nameof(Camp.StartDate)))">
+                                Termín @SortGlyph(nameof(Camp.StartDate))
+                            </button>
+                        </th>
+
+                        <th>
+                            <button class="btn btn-link p-0 text-decoration-none"
+                                    @onclick="@(() => SortBy(nameof(Camp.Price)))">
+                                Cena @SortGlyph(nameof(Camp.Price))
+                            </button>
+                        </th>
+
+                        <th>
+                            <button class="btn btn-link p-0 text-decoration-none"
+                                    @onclick="@(() => SortBy(nameof(Camp.RegisteredCount)))">
+                                Registrace / Kapacita @SortGlyph(nameof(Camp.RegisteredCount))
+                            </button>
+                        </th>
+
+                        <th>
+                            <button class="btn btn-link p-0 text-decoration-none"
+                                    @onclick="@(() => SortBy(SortKeyOccupancy))">
+                                Obsazenost @SortGlyph(SortKeyOccupancy)
+                            </button>
+                        </th>
+
+                        <th>
+                            <button class="btn btn-link p-0 text-decoration-none"
+                                    @onclick="@(() => SortBy(SortKeyRevenue))">
+                                Tržby (odhad) @SortGlyph(SortKeyRevenue)
+                            </button>
+                        </th>
+
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in CampsSorted)
+                    {
+                        var occValue = Occupancy(item);
+                        <tr>
+                            <td class="text-truncate" style="max-width:280px" title="@item.Name">@item.Name</td>
+                            <td class="text-truncate" style="max-width:200px" title="@item.Location">@item.Location</td>
+                            <td>@item.StartDate:dd.MM.yyyy – @item.EndDate:dd.MM.yyyy</td>
+                            <td>@FormatCurrency(item.Price)</td>
+                            <td>@item.RegisteredCount / @item.Capacity</td>
+                            <td style="min-width:160px">
+                                <div class="progress" role="progressbar" aria-valuenow="@(occValue*100)">
+                                    <div class="progress-bar" style="width:@($"{occValue*100:F0}%")"></div>
+                                </div>
+                            </td>
+                            <td>@FormatCurrency(RevenueFor(item))</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
 
+}
+
 @code {
-private int totalCamps = 0;
-private int totalRegistrations = 0;
-private int availableSpots = 0;
-private decimal totalRevenue = 0;
-private List<Registration> recentRegistrations = new();
+    private bool loading = true;
 
-protected override async Task OnInitializedAsync()
-{
-await LoadStatistics();
-}
+    private List<Camp> camps = new();
+    private List<Camp> campsThisYear = new();
+    private int campsThisYearCount;
+    private int regsTotal, regsPaid;
+    private decimal revenueCzk;
+    private double avgOccupancy;
 
-private async Task LoadStatistics()
-{
-try
-{
-var camps = await CampService.GetAllCampsAsync();
-totalCamps = camps.Count;
-availableSpots = camps.Sum(c => c.AvailableSpots);
+    private List<WeekPoint> weekly = new();
+    private List<Camp> topOccupancy = new();
+    private List<Camp> topRevenue = new();
+    private const string SortKeyOccupancy = "Occupancy";
+    private const string SortKeyRevenue   = "Revenue";
+  
+    
+    private sealed record WeekPoint(DateOnly WeekStart, int Registrations, int Paid);
 
-var allRegistrations = new List<Registration>();
-foreach (var camp in camps)
-{
-var registrations = await CampService.GetUserRegistrationsAsync("");
-allRegistrations.AddRange(registrations);
-}
+    protected override async Task OnInitializedAsync()
+    {
+        loading = true;
+        camps = (await CampService.GetAllCampsAsync())?.ToList() ?? new();
+        BuildAnalytics();
+        loading = false;
+    }
 
-totalRegistrations = allRegistrations.Count;
-recentRegistrations = allRegistrations.OrderByDescending(r => r.RegistrationDate).ToList();
-totalRevenue = allRegistrations
-.Where(r => r.Status == RegistrationStatus.Paid || r.Status == RegistrationStatus.Confirmed)
-.Sum(r => r.Camp.Price);
-}
-catch (Exception ex)
-{
-// Log error
-}
-}
+    private void BuildAnalytics()
+    {
+        var year = DateTime.Now.Year;
+        campsThisYear = camps
+            .Where(c => c.StartDate.Year == year || c.EndDate.Year == year)
+            .OrderBy(c => c.StartDate)
+            .ToList();
 
-private static string GetStatusBadgeClass(RegistrationStatus status) => status switch
-{
-RegistrationStatus.Pending => "badge-warning",
-RegistrationStatus.Confirmed => "badge-info",
-RegistrationStatus.Paid => "badge-success",
-RegistrationStatus.Cancelled => "badge-secondary",
-_ => "badge-secondary"
-};
+        campsThisYearCount = campsThisYear.Count;
 
-private static string GetStatusText(RegistrationStatus status) => status switch
-{
-RegistrationStatus.Pending => "Čeká na potvrzení",
-RegistrationStatus.Confirmed => "Potvrzeno",
-RegistrationStatus.Paid => "Zaplaceno",
-RegistrationStatus.Cancelled => "Zrušeno",
-_ => "Neznámý stav"
-};
+        regsTotal = campsThisYear.Sum(c => c.Registrations?.Count(r => r.Status != RegistrationStatus.Cancelled) ?? 0);
+        regsPaid  = campsThisYear.Sum(c => c.Registrations?.Count(r => r.Status == RegistrationStatus.Paid) ?? 0);
+
+        revenueCzk = campsThisYear.Sum(c =>
+            (decimal)c.Price * (c.Registrations?.Count(r => r.Status == RegistrationStatus.Paid) ?? 0));
+
+        var totalCap = Math.Max(1, campsThisYear.Sum(c => c.Capacity));
+        avgOccupancy = (double)regsTotal / totalCap;
+
+        // Trend: posledních 6 týdnů
+        var from = DateTime.Today.AddDays(-42);
+        var regs = campsThisYear
+            .SelectMany(c => (c.Registrations ?? new List<Registration>())
+                .Select(r => new { r.RegistrationDate, Paid = r.Status == RegistrationStatus.Paid }))
+            .Where(x => x.RegistrationDate >= from)
+            .ToList();
+
+        var buckets = new SortedDictionary<DateOnly, (int reg, int paid)>();
+        foreach (var it in regs)
+        {
+            var d = it.RegistrationDate.ToLocalTime().Date;
+            var delta = ((int)d.DayOfWeek + 6) % 7; // Po=0
+            var monday = DateOnly.FromDateTime(d.AddDays(-delta));
+            if (!buckets.ContainsKey(monday)) buckets[monday] = (0, 0);
+            var cur = buckets[monday];
+            cur.reg++;
+            if (it.Paid) cur.paid++;
+            buckets[monday] = cur;
+        }
+        weekly = buckets.Select(kv => new WeekPoint(kv.Key, kv.Value.reg, kv.Value.paid)).ToList();
+
+        topOccupancy = campsThisYear
+            .OrderByDescending(c => Occupancy(c))
+            .Take(5).ToList();
+
+        topRevenue = campsThisYear
+            .OrderByDescending(c => RevenueFor(c))
+            .Take(5).ToList();
+    }
+
+    private double Occupancy(Camp c)
+    {
+        var reg = c.Registrations?.Count(r => r.Status != RegistrationStatus.Cancelled) ?? 0;
+        return c.Capacity > 0 ? (double)reg / c.Capacity : 0;
+    }
+
+    private decimal RevenueFor(Camp c)
+    {
+        var paid = c.Registrations?.Count(r => r.Status == RegistrationStatus.Paid) ?? 0;
+        return (decimal)c.Price * paid;
+    }
+
+    private string FormatCurrency(decimal v) => string.Format(System.Globalization.CultureInfo.GetCultureInfo("cs-CZ"), "{0:C0}", v);
+        
+    private string sortBy = "StartDate";
+    private bool sortAsc = true;
+
+    private IEnumerable<Camp> CampsSorted
+    {
+        get
+        {
+            IEnumerable<Camp> q = campsThisYear;
+
+            q = sortBy switch
+            {
+                nameof(Camp.Name)            => (sortAsc ? q.OrderBy(c => c.Name)            : q.OrderByDescending(c => c.Name)),
+                nameof(Camp.Location)        => (sortAsc ? q.OrderBy(c => c.Location)        : q.OrderByDescending(c => c.Location)),
+                "StartDate"                  => (sortAsc ? q.OrderBy(c => c.StartDate)       : q.OrderByDescending(c => c.StartDate)),
+                nameof(Camp.Price)           => (sortAsc ? q.OrderBy(c => c.Price)           : q.OrderByDescending(c => c.Price)),
+                nameof(Camp.RegisteredCount) => (sortAsc ? q.OrderBy(c => c.RegisteredCount) : q.OrderByDescending(c => c.RegisteredCount)),
+                "Occupancy"                  => (sortAsc ? q.OrderBy(c => Occupancy(c))      : q.OrderByDescending(c => Occupancy(c))),
+                "Revenue"                    => (sortAsc ? q.OrderBy(c => RevenueFor(c))     : q.OrderByDescending(c => RevenueFor(c))),
+                _                            => (sortAsc ? q.OrderBy(c => c.StartDate)       : q.OrderByDescending(c => c.StartDate)),
+            };
+
+            return q.ToList();
+        }
+    }
+
+    private void SortBy(string column)
+    {
+        if (sortBy == column) sortAsc = !sortAsc;
+        else { sortBy = column; sortAsc = true; }
+    }
+
+    private MarkupString SortGlyph(string column)
+    {
+        if (sortBy != column) return (MarkupString)string.Empty;
+        return (MarkupString)(sortAsc ? " &#9650;" : " &#9660;");
+    }
 }
 
 <style>
-    .border-left-primary { border-left: 0.25rem solid #4e73df !important; }
-    .border-left-success { border-left: 0.25rem solid #1cc88a !important; }
-    .border-left-info { border-left: 0.25rem solid #36b9cc !important; }
-    .border-left-warning { border-left: 0.25rem solid #f6c23e !important; }
-    .badge-warning { background-color: #f6c23e; }
-    .badge-info { background-color: #36b9cc; }
-    .badge-success { background-color: #1cc88a; }
-    .badge-secondary { background-color: #858796; }
+    /* mini bar chart bez JS – 2 série nad sebou */
+    .bar { position: relative; height: 120px; background: #f8f9fa; border: 1px solid #eee; border-radius: 6px; overflow: hidden; }
+    .bar-bg { position:absolute; left:0; right:0; bottom:0; top:0; background:linear-gradient(180deg,#fff,transparent); }
+    .bar-reg { position:absolute; left:10%; right:55%; bottom:0; background:#0d6efd; opacity:.25; border-radius:4px 4px 0 0; }
+    .bar-paid { position:absolute; left:55%; right:10%; bottom:0; background:#198754; opacity:.25; border-radius:4px 4px 0 0; }
+    .mini-line { height: 6px; background:#f1f3f5; border-radius: 3px; margin: 6px 0 12px; }
 </style>
