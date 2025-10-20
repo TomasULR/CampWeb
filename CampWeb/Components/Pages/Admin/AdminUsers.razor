@@ -5,6 +5,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Identity
 @using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Components
 @inject UserManager<ApplicationUser> UserManager
 @inject RoleManager<IdentityRole> RoleManager
 @inject IJSRuntime JSRuntime
@@ -153,7 +154,7 @@
                                     <td>
                                         <div class="d-flex align-items-center">
                                             <div class="avatar bg-primary text-white me-3">
-                                                @user.FullName.Substring(0, 1).ToUpper()
+                                                @(string.IsNullOrEmpty(user.FullName) ? "?" : user.FullName.Substring(0, 1).ToUpper())
                                             </div>
                                             <div>
                                                 <div class="fw-bold">@user.FullName</div>
@@ -214,42 +215,28 @@
                                         }
                                     </td>
                                     <td>
-                                        <div class="dropdown">
-                                            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                                                <i class="fas fa-ellipsis-v"></i>
+                                        <div class="btn-group">
+                                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => ViewUser(user)" title="Detail">
+                                                <i class="fas fa-eye"></i>
                                             </button>
-                                            <ul class="dropdown-menu">
-                                                <li>
-                                                    <button class="dropdown-item" @onclick="() => ViewUser(user)">
-                                                        <i class="fas fa-eye me-2"></i>Detail
-                                                    </button>
-                                                </li>
-                                                <li>
-                                                    <button class="dropdown-item" @onclick="() => EditUser(user)">
-                                                        <i class="fas fa-edit me-2"></i>Upravit
-                                                    </button>
-                                                </li>
-                                                <li>
-                                                    <button class="dropdown-item" @onclick="() => ManageUserRoles(user)">
-                                                        <i class="fas fa-user-cog me-2"></i>Role
-                                                    </button>
-                                                </li>
-                                                <li><hr class="dropdown-divider"></li>
-                                                <li>
-                                                    @if (user.LockoutEnd.HasValue && user.LockoutEnd > DateTime.UtcNow)
-                                                    {
-                                                        <button class="dropdown-item text-success" @onclick="() => UnlockUser(user)">
-                                                            <i class="fas fa-unlock me-2"></i>Odblokovat
-                                                        </button>
-                                                    }
-                                                    else
-                                                    {
-                                                        <button class="dropdown-item text-warning" @onclick="() => LockUser(user)">
-                                                            <i class="fas fa-lock me-2"></i>Zablokovat
-                                                        </button>
-                                                    }
-                                                </li>
-                                            </ul>
+                                            <button class="btn btn-sm btn-outline-primary" @onclick="() => EditUser(user)" title="Upravit">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-info" @onclick="() => ManageUserRoles(user)" title="Role">
+                                                <i class="fas fa-user-cog"></i>
+                                            </button>
+                                            @if (user.LockoutEnd.HasValue && user.LockoutEnd > DateTime.UtcNow)
+                                            {
+                                                <button class="btn btn-sm btn-outline-success" @onclick="() => UnlockUser(user)" title="Odblokovat">
+                                                    <i class="fas fa-unlock"></i>
+                                                </button>
+                                            }
+                                            else
+                                            {
+                                                <button class="btn btn-sm btn-outline-warning" @onclick="() => LockUser(user)" title="Zablokovat">
+                                                    <i class="fas fa-lock"></i>
+                                                </button>
+                                            }
                                         </div>
                                     </td>
                                 </tr>
@@ -264,12 +251,12 @@
     <!-- Create User Modal -->
     @if (showCreateModal)
     {
-        <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
-            <div class="modal-dialog">
+        <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);" @onclick="@(() => { if (!isCreatingUser) HideCreateModal(); })">
+            <div class="modal-dialog" @onclick:stopPropagation="true">
                 <div class="modal-content">
                     <div class="modal-header">
                         <h5 class="modal-title">Vytvořit nového uživatele</h5>
-                        <button type="button" class="btn-close" @onclick="HideCreateModal"></button>
+                        <button type="button" class="btn-close" @onclick="HideCreateModal" disabled="@isCreatingUser"></button>
                     </div>
                     <div class="modal-body">
                         <EditForm Model="createUserForm" OnValidSubmit="CreateUser">
@@ -278,44 +265,44 @@
                             <div class="row">
                                 <div class="col-md-6 mb-3">
                                     <label class="form-label">Jméno *</label>
-                                    <InputText @bind-Value="createUserForm.FirstName" class="form-control" />
+                                    <InputText @bind-Value="createUserForm.FirstName" class="form-control" disabled="@isCreatingUser" />
                                     <ValidationMessage For="@(() => createUserForm.FirstName)" class="text-danger small" />
                                 </div>
                                 <div class="col-md-6 mb-3">
                                     <label class="form-label">Příjmení *</label>
-                                    <InputText @bind-Value="createUserForm.LastName" class="form-control" />
+                                    <InputText @bind-Value="createUserForm.LastName" class="form-control" disabled="@isCreatingUser" />
                                     <ValidationMessage For="@(() => createUserForm.LastName)" class="text-danger small" />
                                 </div>
                             </div>
 
                             <div class="mb-3">
                                 <label class="form-label">E-mail *</label>
-                                <InputText @bind-Value="createUserForm.Email" class="form-control" type="email" />
+                                <InputText @bind-Value="createUserForm.Email" class="form-control" type="email" disabled="@isCreatingUser" />
                                 <ValidationMessage For="@(() => createUserForm.Email)" class="text-danger small" />
                             </div>
 
                             <div class="mb-3">
                                 <label class="form-label">Telefon</label>
-                                <InputText @bind-Value="createUserForm.PhoneNumber" class="form-control" />
+                                <InputText @bind-Value="createUserForm.PhoneNumber" class="form-control" disabled="@isCreatingUser" />
                                 <ValidationMessage For="@(() => createUserForm.PhoneNumber)" class="text-danger small" />
                             </div>
 
                             <div class="row">
                                 <div class="col-md-6 mb-3">
                                     <label class="form-label">Heslo *</label>
-                                    <InputText @bind-Value="createUserForm.Password" class="form-control" type="password" />
+                                    <InputText @bind-Value="createUserForm.Password" class="form-control" type="password" disabled="@isCreatingUser" />
                                     <ValidationMessage For="@(() => createUserForm.Password)" class="text-danger small" />
                                 </div>
                                 <div class="col-md-6 mb-3">
                                     <label class="form-label">Potvrdit heslo *</label>
-                                    <InputText @bind-Value="createUserForm.ConfirmPassword" class="form-control" type="password" />
+                                    <InputText @bind-Value="createUserForm.ConfirmPassword" class="form-control" type="password" disabled="@isCreatingUser" />
                                     <ValidationMessage For="@(() => createUserForm.ConfirmPassword)" class="text-danger small" />
                                 </div>
                             </div>
 
                             <div class="mb-3">
                                 <label class="form-label">Role</label>
-                                <InputSelect @bind-Value="createUserForm.Role" class="form-select">
+                                <InputSelect @bind-Value="createUserForm.Role" class="form-select" disabled="@isCreatingUser">
                                     <option value="Parent">Rodič</option>
                                     <option value="Admin">Administrátor</option>
                                     <option value="SuperAdmin">Super Admin</option>
@@ -323,7 +310,7 @@
                             </div>
 
                             <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary" @onclick="HideCreateModal">Zrušit</button>
+                                <button type="button" class="btn btn-secondary" @onclick="HideCreateModal" disabled="@isCreatingUser">Zrušit</button>
                                 @if (isCreatingUser)
                                 {
                                     <button class="btn btn-primary" type="button" disabled>
@@ -348,8 +335,8 @@
     <!-- User Detail Modal -->
     @if (selectedUser != null)
     {
-        <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
-            <div class="modal-dialog modal-lg">
+        <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);" @onclick="CloseUserDetailModal">
+            <div class="modal-dialog modal-lg" @onclick:stopPropagation="true">
                 <div class="modal-content">
                     <div class="modal-header">
                         <h5 class="modal-title">Detail uživatele - @selectedUser.FullName</h5>
@@ -469,8 +456,8 @@
         {
             isLoading = true;
             
-            // Load all users
-            allUsers = UserManager.Users.OrderBy(u => u.FullName).ToList();
+            // Load all users - order by FirstName (FullName is computed property)
+            allUsers = UserManager.Users.OrderBy(u => u.FirstName).ThenBy(u => u.LastName).ToList();
             
             // Load user roles
             userRoles.Clear();
@@ -489,7 +476,7 @@
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error loading users data");
-            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se načíst uživatele", "error");
+            await ShowToast("Chyba", "Nepodařilo se načíst uživatele", "error");
         }
         finally
         {
@@ -525,7 +512,7 @@
         {
             var term = searchTerm.ToLower();
             filtered = filtered.Where(u =>
-                u.FullName.ToLower().Contains(term) ||
+                (u.FullName?.ToLower().Contains(term) ?? false) ||
                 (u.Email?.ToLower().Contains(term) ?? false) ||
                 (u.UserName?.ToLower().Contains(term) ?? false));
         }
@@ -542,8 +529,11 @@
 
     private void HideCreateModal()
     {
-        showCreateModal = false;
-        createUserForm = new CreateUserFormModel();
+        if (!isCreatingUser)
+        {
+            showCreateModal = false;
+            createUserForm = new CreateUserFormModel();
+        }
     }
 
     private async Task CreateUser()
@@ -569,20 +559,20 @@
             {
                 await UserManager.AddToRoleAsync(user, createUserForm.Role);
                 
-                await JSRuntime.InvokeVoidAsync("showToast", "Úspěch", "Uživatel byl vytvořen", "success");
+                await ShowToast("Úspěch", "Uživatel byl vytvořen", "success");
                 await LoadData();
                 HideCreateModal();
             }
             else
             {
                 var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-                await JSRuntime.InvokeVoidAsync("showToast", "Chyba", $"Nepodařilo se vytvořit uživatele: {errors}", "error");
+                await ShowToast("Chyba", $"Nepodařilo se vytvořit uživatele: {errors}", "error");
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error creating user");
-            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se vytvořit uživatele", "error");
+            await ShowToast("Chyba", "Nepodařilo se vytvořit uživatele", "error");
         }
         finally
         {
@@ -624,12 +614,12 @@
             {
                 await UserManager.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddYears(100));
                 await LoadData();
-                await JSRuntime.InvokeVoidAsync("showToast", "Úspěch", "Uživatel byl zablokován", "success");
+                await ShowToast("Úspěch", "Uživatel byl zablokován", "success");
             }
             catch (Exception ex)
             {
                 Logger.LogError(ex, "Error locking user");
-                await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se zablokovat uživatele", "error");
+                await ShowToast("Chyba", "Nepodařilo se zablokovat uživatele", "error");
             }
         }
     }
@@ -640,12 +630,12 @@
         {
             await UserManager.SetLockoutEndDateAsync(user, null);
             await LoadData();
-            await JSRuntime.InvokeVoidAsync("showToast", "Úspěch", "Uživatel byl odblokován", "success");
+            await ShowToast("Úspěch", "Uživatel byl odblokován", "success");
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error unlocking user");
-            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se odblokovat uživatele", "error");
+            await ShowToast("Chyba", "Nepodařilo se odblokovat uživatele", "error");
         }
     }
 
@@ -674,6 +664,18 @@
             "Parent" => "Rodič",
             _ => role
         };
+    }
+
+    private async Task ShowToast(string title, string message, string type)
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("showToast", title, message, type);
+        }
+        catch
+        {
+            // Fallback if showToast is not available
+        }
     }
 
     public class CreateUserFormModel

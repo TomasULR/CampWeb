@@ -308,8 +308,9 @@ else
 
     private double Occupancy(Camp c)
     {
-        var reg = c.Registrations?.Count(r => r.Status != RegistrationStatus.Cancelled) ?? 0;
-        return c.Capacity > 0 ? (double)reg / c.Capacity : 0;
+        if (c.Capacity <= 0) return 0;
+        var activeRegistrations = c.Registrations?.Count(r => r.Status != RegistrationStatus.Cancelled) ?? 0;
+        return (double)activeRegistrations / c.Capacity;
     }
 
     private decimal RevenueFor(Camp c)

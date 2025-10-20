@@ -508,7 +508,11 @@ else
     => (sortBy == key) ? (MarkupString)(sortAsc ? " &#9650;" : " &#9660;") : (MarkupString)string.Empty;
 
   private static double Occupancy(Camp c)
-    => c.Capacity > 0 ? (double)c.RegisteredCount / c.Capacity : 0;
+  {
+      if (c.Capacity <= 0) return 0;
+      var activeRegistrations = c.Registrations?.Count(r => r.Status != RegistrationStatus.Cancelled) ?? 0;
+      return (double)activeRegistrations / c.Capacity;
+  }
 
   private static decimal RevenueEstimate(Camp c)
     => c.Price * (c.Registrations?.Count(r => r.Status == RegistrationStatus.Paid) ?? 0);

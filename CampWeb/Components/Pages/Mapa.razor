@@ -1,6 +1,9 @@
 ﻿@page "/mapa"
+@using CampWeb.Models
 @inject IJSRuntime JSRuntime
 @inject ICampService CampService
+@inject ILogger<Mapa> Logger
+@rendermode InteractiveServer
 
 <PageTitle>Mapa táborů - Letní Tábory Plzeň</PageTitle>
 
@@ -12,7 +15,7 @@
         <div class="row align-items-center">
             <div class="col-md-3">
                 <label class="form-label">Typ tábora</label>
-                <select class="form-select" @onchange="FilterByType">
+                <select class="form-select" @bind="selectedType" @bind:after="ApplyFilters">
                     <option value="">Všechny typy</option>
                     <option value="adventure">Dobrodružné</option>
                     <option value="sport">Sportovní</option>
@@ -23,7 +26,7 @@
             </div>
             <div class="col-md-3">
                 <label class="form-label">Věková kategorie</label>
-                <select class="form-select" @onchange="FilterByAge">
+                <select class="form-select" @bind="selectedAge" @bind:after="ApplyFilters">
                     <option value="">Všechny věky</option>
                     <option value="6-9">6-9 let</option>
                     <option value="10-13">10-13 let</option>
@@ -32,8 +35,9 @@
             </div>
             <div class="col-md-3">
                 <label class="form-label">Cena do: <span class="fw-bold">@maxPrice Kč</span></label>
-                <input type="range" class="form-range" min="3000" max="8000" 
-                       value="@maxPrice" @oninput="UpdatePriceFilter" />
+                <input type="range" class="form-range" min="3000" max="8000" step="100"
+                       value="@maxPrice" @oninput="@((e) => { maxPrice = int.Parse(e.Value?.ToString() ?? "6000"); })" 
+                       @onchange="ApplyFilters" />
             </div>
             <div class="col-md-3">
                 <label class="form-label">&nbsp;</label>
@@ -47,7 +51,31 @@
     </div>
 
     <!-- Map Container -->
-    <div id="map" style="height: 500px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);"></div>
+    <div class="position-relative">
+        <div id="map" style="height: 500px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); background: #f0f0f0;"></div>
+        
+        @if (!isMapLoaded && !mapLoadError)
+        {
+            <div class="position-absolute top-50 start-50 translate-middle">
+                <div class="text-center">
+                    <div class="spinner-border text-primary mb-2" role="status">
+                        <span class="visually-hidden">Načítání...</span>
+                    </div>
+                    <div class="text-muted">Načítání mapy...</div>
+                </div>
+            </div>
+        }
+        
+        @if (mapLoadError)
+        {
+            <div class="position-absolute top-50 start-50 translate-middle">
+                <div class="alert alert-warning text-center">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Mapa se nepodařila načíst. Zobrazují se pouze karty táborů.
+                </div>
+            </div>
+        }
+    </div>
 
     <!-- Map Status -->
     <div class="text-center mt-2">
@@ -55,6 +83,10 @@
             @if (isMapLoaded)
             {
                 <i class="fas fa-check-circle text-success"></i> <span>Mapa načtena (@filteredCamps.Count táborů)</span>
+            }
+            else if (mapLoadError)
+            {
+                <i class="fas fa-exclamation-triangle text-warning"></i> <span>Mapa není k dispozici</span>
             }
             else
             {
@@ -68,32 +100,58 @@
         <div class="col-12">
             <h3 class="mb-4">Dostupné tábory (@filteredCamps.Count)</h3>
         </div>
-        @foreach (var camp in filteredCamps)
+        
+        @if (isLoading)
         {
-            <div class="col-md-6 col-lg-4 mb-4">
-                <div class="card camp-card">
-                    <div class="camp-image">
-                        <i class="@GetCampIcon(camp.Type)"></i>
-                    </div>
-                    <div class="card-body">
-                        <span class="badge @GetAvailabilityBadge(camp.AvailableSpots) mb-2">
-                            @GetAvailabilityText(camp.AvailableSpots)
-                        </span>
-                        <h5>@camp.Name</h5>
-                        <p class="text-muted">
-                            <i class="fas fa-map-marker-alt me-1"></i>@camp.Location
-                        </p>
-                        <p class="small">@camp.ShortDescription</p>
-                        <p class="fw-bold text-primary">@camp.Price Kč / týden</p>
-                        <div class="d-flex gap-2">
-                            <a href="/tabor/@camp.Id" class="btn btn-primary btn-sm">Detail</a>
-                            <button class="btn btn-outline-primary btn-sm" @onclick="() => FocusOnMap(camp)">
-                                <i class="fas fa-map-marker-alt"></i>
-                            </button>
+            <div class="col-12 text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Načítání...</span>
+                </div>
+                <p class="mt-2 text-muted">Načítání táborů...</p>
+            </div>
+        }
+        else if (!filteredCamps.Any())
+        {
+            <div class="col-12 text-center py-5">
+                <i class="fas fa-search text-muted display-1 mb-3"></i>
+                <h5 class="text-muted">Žádné tábory nenalezeny</h5>
+                <p class="text-muted">Zkuste upravit filtry</p>
+            </div>
+        }
+        else
+        {
+            @foreach (var camp in filteredCamps)
+            {
+                <div class="col-md-6 col-lg-4 mb-4">
+                    <div class="card camp-card h-100">
+                        <div class="camp-image">
+                            <i class="@GetCampIcon(camp.Type)"></i>
+                        </div>
+                        <div class="card-body d-flex flex-column">
+                            <span class="badge @GetAvailabilityBadge(camp.AvailableSpots) mb-2 align-self-start">
+                                @GetAvailabilityText(camp.AvailableSpots)
+                            </span>
+                            <h5>@camp.Name</h5>
+                            <p class="text-muted small">
+                                <i class="fas fa-map-marker-alt me-1"></i>@camp.Location
+                            </p>
+                            <p class="small text-muted">@camp.ShortDescription</p>
+                            <div class="mt-auto">
+                                <p class="fw-bold text-primary mb-3">@camp.Price.ToString("N0") Kč / týden</p>
+                                <div class="d-flex gap-2">
+                                    <a href="/tabor/@camp.Id" class="btn btn-primary btn-sm flex-grow-1">Detail</a>
+                                    @if (isMapLoaded)
+                                    {
+                                        <button class="btn btn-outline-primary btn-sm" @onclick="() => FocusOnMap(camp)">
+                                            <i class="fas fa-map-marker-alt"></i>
+                                        </button>
+                                    }
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            }
         }
     </div>
 </div>
@@ -119,12 +177,14 @@
     }
 
     .camp-card {
-        height: 100%;
-        transition: transform 0.3s ease;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        border: none;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     }
 
     .camp-card:hover {
         transform: translateY(-5px);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
     }
 
     .form-range::-webkit-slider-thumb {
@@ -144,17 +204,30 @@
     private string selectedType = "";
     private string selectedAge = "";
     private bool isMapLoaded = false;
+    private bool mapLoadError = false;
+    private bool isLoading = true;
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            allCamps = await CampService.GetAllCampsAsync();
+            isLoading = true;
+            var camps = await CampService.GetAllCampsAsync();
+            // Filter camps that have valid coordinates (not 0,0)
+            allCamps = camps?.Where(c => c.Latitude != 0 && c.Longitude != 0).ToList() ?? new();
             filteredCamps = allCamps.ToList();
+            
+            Logger.LogInformation("Loaded {CampCount} camps for map", allCamps.Count);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error loading camps: {ex.Message}");
+            Logger.LogError(ex, "Error loading camps");
+            allCamps = new();
+            filteredCamps = new();
+        }
+        finally
+        {
+            isLoading = false;
         }
     }
 
@@ -164,35 +237,91 @@
         {
             try
             {
-                // Wait a bit for Leaflet to load
-                await Task.Delay(500);
-                await JSRuntime.InvokeVoidAsync("initializeMap", allCamps);
+                // Wait for potential map library to load
+                await Task.Delay(300);
+                
+                // Try to initialize the map
+                var mapData = allCamps.Select(c => new 
+                {
+                    id = c.Id,
+                    name = c.Name,
+                    latitude = c.Latitude,
+                    longitude = c.Longitude,
+                    location = c.Location,
+                    price = c.Price,
+                    availableSpots = c.AvailableSpots,
+                    type = c.Type,
+                    shortDescription = c.ShortDescription
+                }).ToList();
+                
+                await JSRuntime.InvokeVoidAsync("initializeMap", mapData);
                 isMapLoaded = true;
                 StateHasChanged();
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error initializing map: {ex.Message}");
+                Logger.LogWarning(ex, "Map initialization failed - continuing without map");
+                mapLoadError = true;
+                StateHasChanged();
             }
         }
     }
 
-    private async Task FilterByType(ChangeEventArgs e)
+    private async Task ApplyFilters()
     {
-        selectedType = e.Value?.ToString() ?? "";
-        await ApplyFilters();
-    }
+        try
+        {
+            var filtered = allCamps.AsEnumerable();
 
-    private async Task FilterByAge(ChangeEventArgs e)
-    {
-        selectedAge = e.Value?.ToString() ?? "";
-        await ApplyFilters();
-    }
+            // Filter by type
+            if (!string.IsNullOrEmpty(selectedType))
+            {
+                filtered = filtered.Where(c => c.Type?.ToLower() == selectedType.ToLower());
+            }
 
-    private async Task UpdatePriceFilter(ChangeEventArgs e)
-    {
-        maxPrice = int.Parse(e.Value?.ToString() ?? "6000");
-        await ApplyFilters();
+            // Filter by age group
+            if (!string.IsNullOrEmpty(selectedAge))
+            {
+                filtered = filtered.Where(c => c.AgeGroup?.Contains(selectedAge) ?? false);
+            }
+
+            // Filter by price
+            filtered = filtered.Where(c => c.Price <= maxPrice);
+
+            filteredCamps = filtered.ToList();
+            
+            // Update map markers if map is loaded
+            if (isMapLoaded)
+            {
+                try
+                {
+                    var mapData = filteredCamps.Select(c => new 
+                    {
+                        id = c.Id,
+                        name = c.Name,
+                        latitude = c.Latitude,
+                        longitude = c.Longitude,
+                        location = c.Location,
+                        price = c.Price,
+                        availableSpots = c.AvailableSpots,
+                        type = c.Type,
+                        shortDescription = c.ShortDescription
+                    }).ToList();
+                    
+                    await JSRuntime.InvokeVoidAsync("updateMapMarkers", mapData);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "Error updating map markers");
+                }
+            }
+            
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error applying filters");
+        }
     }
 
     private async Task ResetFilters()
@@ -202,56 +331,57 @@
         maxPrice = 6000;
         filteredCamps = allCamps.ToList();
         
-        try
+        if (isMapLoaded)
         {
-            await JSRuntime.InvokeVoidAsync("updateMapMarkers", filteredCamps);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error updating map markers: {ex.Message}");
+            try
+            {
+                var mapData = filteredCamps.Select(c => new 
+                {
+                    id = c.Id,
+                    name = c.Name,
+                    latitude = c.Latitude,
+                    longitude = c.Longitude,
+                    location = c.Location,
+                    price = c.Price,
+                    availableSpots = c.AvailableSpots,
+                    type = c.Type,
+                    shortDescription = c.ShortDescription
+                }).ToList();
+                
+                await JSRuntime.InvokeVoidAsync("updateMapMarkers", mapData);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Error updating map markers");
+            }
         }
         
         StateHasChanged();
     }
 
-    private async Task ApplyFilters()
-    {
-        try
-        {
-            filteredCamps = await CampService.FilterCampsAsync(
-                string.IsNullOrEmpty(selectedType) ? null : selectedType,
-                string.IsNullOrEmpty(selectedAge) ? null : selectedAge,
-                maxPrice
-            );
-            
-            if (isMapLoaded)
-            {
-                await JSRuntime.InvokeVoidAsync("updateMapMarkers", filteredCamps);
-            }
-            
-            StateHasChanged();
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error applying filters: {ex.Message}");
-        }
-    }
-
     private async Task FocusOnMap(Camp camp)
     {
+        if (!isMapLoaded || camp.Latitude == 0 || camp.Longitude == 0)
+            return;
+            
         try
         {
-            await JSRuntime.InvokeVoidAsync("focusMapOnCamp", camp.Latitude, camp.Longitude);
+            await JSRuntime.InvokeVoidAsync("focusMapOnCamp", camp.Latitude, camp.Longitude, camp.Name);
+            
+            // Scroll to map
+            await JSRuntime.InvokeVoidAsync("eval", "document.getElementById('map').scrollIntoView({ behavior: 'smooth', block: 'center' });");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error focusing on map: {ex.Message}");
+            Logger.LogWarning(ex, "Error focusing on map");
         }
     }
 
-    private static string GetCampIcon(string type)
+    private static string GetCampIcon(string? type)
     {
-        return type switch
+        if (string.IsNullOrEmpty(type)) return "fas fa-campground";
+        
+        return type.ToLower() switch
         {
             "adventure" => "fas fa-mountain",
             "sport" => "fas fa-volleyball-ball",
@@ -267,7 +397,7 @@
         return spots switch
         {
             0 => "bg-danger",
-            <= 5 => "bg-warning",
+            <= 5 => "bg-warning text-dark",
             _ => "bg-success"
         };
     }
@@ -277,8 +407,8 @@
         return spots switch
         {
             0 => "Obsazeno",
-            <= 5 => "Poslední místa",
-            _ => "Volná místa"
+            <= 5 => $"Poslední místa ({spots})",
+            _ => $"Volná místa ({spots})"
         };
     }
 }

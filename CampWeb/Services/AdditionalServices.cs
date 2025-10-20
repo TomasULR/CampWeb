@@ -3,14 +3,16 @@ using CampWeb.Data;
 using Microsoft.EntityFrameworkCore;
 using System.Net.Mail;
 using System.Net;
+using System.Text;
 
 namespace CampWeb.Services;
 
 public interface IEmailService
 {
-    Task SendEmailAsync(string to, string subject, string body);
-    Task SendRegistrationConfirmationAsync(string email, string childName, string campName, string accessCode);
-    Task SendCampUpdateNotificationAsync(string email, string childName, string campName, string updateTitle);
+    Task<bool> SendEmailAsync(string to, string subject, string htmlBody);
+    Task<bool> SendRegistrationConfirmationAsync(Registration registration, Camp camp);
+    Task<bool> SendCampUpdateNotificationAsync(string email, string childName, string campName, string updateTitle);
+    Task<bool> SendPhotoGalleryAccessAsync(Registration registration, Camp camp);
 }
 
 public class EmailService : IEmailService
@@ -24,51 +26,300 @@ public class EmailService : IEmailService
         _configuration = configuration;
     }
 
-    public async Task SendEmailAsync(string to, string subject, string body)
+    public async Task<bool> SendEmailAsync(string to, string subject, string htmlBody)
     {
         try
         {
-            // V development módu pouze logujeme
-            _logger.LogInformation("Email would be sent to: {To}", to);
-            _logger.LogInformation("Subject: {Subject}", subject);
-            _logger.LogInformation("Body: {Body}", body);
-            
-            // V produkci implementujte skutečné odesílání emailů
-            await Task.Delay(100); // Simulace
+            var smtpServer = _configuration["Email:SmtpServer"];
+            var smtpPort = _configuration.GetValue<int>("Email:SmtpPort", 587);
+            var smtpUsername = _configuration["Email:Username"];
+            var smtpPassword = _configuration["Email:Password"];
+            var fromEmail = _configuration["Email:FromEmail"] ?? "info@letnitabory.cz";
+            var fromName = _configuration["Email:FromName"] ?? "Letní Tábory Plzeň";
+
+            // If SMTP not configured, log and return
+            if (string.IsNullOrEmpty(smtpServer) || string.IsNullOrEmpty(smtpUsername))
+            {
+                _logger.LogWarning("SMTP not configured. Email would be sent to: {To}", to);
+                _logger.LogInformation("Subject: {Subject}", subject);
+                _logger.LogInformation("Body preview: {Body}", htmlBody.Substring(0, Math.Min(200, htmlBody.Length)));
+                return true; // Return true in development mode
+            }
+
+            using var message = new MailMessage();
+            message.From = new MailAddress(fromEmail, fromName);
+            message.To.Add(new MailAddress(to));
+            message.Subject = subject;
+            message.Body = htmlBody;
+            message.IsBodyHtml = true;
+            message.BodyEncoding = Encoding.UTF8;
+            message.SubjectEncoding = Encoding.UTF8;
+
+            using var client = new SmtpClient(smtpServer, smtpPort);
+            client.Credentials = new NetworkCredential(smtpUsername, smtpPassword);
+            client.EnableSsl = true;
+
+            await client.SendMailAsync(message);
+            _logger.LogInformation("Email sent successfully to {To}", to);
+            return true;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send email to {To}", to);
+            return false;
         }
     }
 
-    public async Task SendRegistrationConfirmationAsync(string email, string childName, string campName, string accessCode)
+    public async Task<bool> SendRegistrationConfirmationAsync(Registration registration, Camp camp)
     {
-        var subject = $"Potvrzení registrace do tábora - {campName}";
-        var body = $@"
-            <h2>Potvrzení registrace</h2>
-            <p>Dobrý den,</p>
-            <p>Vaše dítě <strong>{childName}</strong> bylo úspěšně zaregistrováno do tábora <strong>{campName}</strong>.</p>
-            <p><strong>Přístupový kód:</strong> {accessCode}</p>
-            <p>Tento kód můžete použít pro přístup k fotkám a aktuálním informacím z tábora.</p>
-            <p>S pozdravem,<br>Tým Letních táborů Plzeň</p>
-        ";
+        var subject = $"Potvrzení registrace - {camp.Name}";
+        var baseUrl = _configuration["AppSettings:BaseUrl"] ?? "https://localhost";
+        var photoGalleryUrl = $"{baseUrl}/fotky/{registration.AccessCode}";
 
-        await SendEmailAsync(email, subject, body);
+        var htmlBody = GetRegistrationConfirmationTemplate(
+            registration.ParentName,
+            registration.ChildFullName,
+            camp,
+            registration.AccessCode,
+            photoGalleryUrl
+        );
+
+        return await SendEmailAsync(registration.ParentEmail, subject, htmlBody);
     }
 
-    public async Task SendCampUpdateNotificationAsync(string email, string childName, string campName, string updateTitle)
+    public async Task<bool> SendPhotoGalleryAccessAsync(Registration registration, Camp camp)
+    {
+        var subject = $"Přístup k fotogalerii z tábora - {camp.Name}";
+        var baseUrl = _configuration["AppSettings:BaseUrl"] ?? "https://localhost";
+        var photoGalleryUrl = $"{baseUrl}/fotky/{registration.AccessCode}";
+
+        var htmlBody = GetPhotoGalleryAccessTemplate(
+            registration.ParentName,
+            registration.ChildFullName,
+            camp,
+            registration.AccessCode,
+            photoGalleryUrl
+        );
+
+        return await SendEmailAsync(registration.ParentEmail, subject, htmlBody);
+    }
+
+    public async Task<bool> SendCampUpdateNotificationAsync(string email, string childName, string campName, string updateTitle)
     {
         var subject = $"Nová aktualizace z tábora - {campName}";
-        var body = $@"
-            <h2>Nová aktualizace z tábora</h2>
+        var htmlBody = $@"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='UTF-8'>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+        .content {{ background: #ffffff; padding: 30px; border: 1px solid #e0e0e0; }}
+        .footer {{ background: #f5f5f5; padding: 20px; text-align: center; border-radius: 0 0 10px 10px; font-size: 12px; color: #666; }}
+        .button {{ display: inline-block; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }}
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <div class='header'>
+            <h1>🏕️ Nová aktualizace z tábora</h1>
+        </div>
+        <div class='content'>
             <p>Dobrý den,</p>
-            <p>Pro váš tábor <strong>{campName}</strong> byla přidána nová aktualizace: <strong>{updateTitle}</strong></p>
-            <p>Podrobnosti najdete na našich stránkách.</p>
-            <p>S pozdravem,<br>Tým Letních táborů Plzeň</p>
-        ";
+            <p>Pro tábor <strong>{campName}</strong> byla přidána nová aktualizace:</p>
+            <h3 style='color: #667eea;'>{updateTitle}</h3>
+            <p>Pro více informací a fotky navštivte naše stránky pomocí vašeho přístupového kódu.</p>
+        </div>
+        <div class='footer'>
+            <p>S pozdravem,<br><strong>Tým Letních táborů Plzeň</strong></p>
+        </div>
+    </div>
+</body>
+</html>
+";
 
-        await SendEmailAsync(email, subject, body);
+        return await SendEmailAsync(email, subject, htmlBody);
+    }
+
+    private string GetRegistrationConfirmationTemplate(
+        string parentName,
+        string childName,
+        Camp camp,
+        string accessCode,
+        string photoGalleryUrl)
+    {
+        return $@"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='UTF-8'>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+        .content {{ background: #ffffff; padding: 30px; border: 1px solid #e0e0e0; }}
+        .info-box {{ background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; }}
+        .access-code {{ background: #667eea; color: white; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; border-radius: 5px; letter-spacing: 3px; margin: 20px 0; }}
+        .footer {{ background: #f5f5f5; padding: 20px; text-align: center; border-radius: 0 0 10px 10px; font-size: 12px; color: #666; }}
+        .button {{ display: inline-block; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }}
+        .detail-row {{ padding: 8px 0; border-bottom: 1px solid #e0e0e0; }}
+        .detail-label {{ font-weight: bold; color: #667eea; }}
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <div class='header'>
+            <h1>🎉 Děkujeme za registraci!</h1>
+            <p>Těšíme se na vaše dítě v našem táboře</p>
+        </div>
+        <div class='content'>
+            <p>Dobrý den, <strong>{parentName}</strong>,</p>
+            
+            <p>Vaše registrace byla úspěšně přijata! Dítě <strong>{childName}</strong> je zaregistrováno na tábor:</p>
+            
+            <div class='info-box'>
+                <h3 style='color: #667eea; margin-top: 0;'>📋 Informace o táboře</h3>
+                <div class='detail-row'>
+                    <span class='detail-label'>Název tábora:</span> {camp.Name}
+                </div>
+                <div class='detail-row'>
+                    <span class='detail-label'>Místo konání:</span> {camp.Location}
+                </div>
+                <div class='detail-row'>
+                    <span class='detail-label'>Termín:</span> {camp.StartDate:dd.MM.yyyy} - {camp.EndDate:dd.MM.yyyy}
+                </div>
+                <div class='detail-row'>
+                    <span class='detail-label'>Cena:</span> {camp.Price:N0} Kč
+                </div>
+                <div class='detail-row'>
+                    <span class='detail-label'>Věková skupina:</span> {camp.AgeGroup}
+                </div>
+                <div class='detail-row'>
+                    <span class='detail-label'>Typ tábora:</span> {camp.Type}
+                </div>
+            </div>
+
+            <h3 style='color: #667eea;'>🔑 Váš přístupový kód</h3>
+            <p>Tento kód použijete pro přístup k fotogalerii a aktualizacím z tábora:</p>
+            <div class='access-code'>{accessCode}</div>
+
+            <div style='text-align: center;'>
+                <a href='{photoGalleryUrl}' class='button'>📸 Zobrazit fotogalerii</a>
+            </div>
+
+            <div class='info-box'>
+                <h4 style='color: #667eea; margin-top: 0;'>ℹ️ Co dál?</h4>
+                <ul style='margin: 0; padding-left: 20px;'>
+                    <li>Uschovejte si tento přístupový kód - budete ho potřebovat pro přístup k fotkám</li>
+                    <li>Během tábora budeme pravidelně přidávat fotky a aktualizace</li>
+                    <li>Dostanete email s upozorněním na každou novou aktualizaci</li>
+                    <li>V případě dotazů nás neváhejte kontaktovat</li>
+                </ul>
+            </div>
+
+            <h3 style='color: #667eea;'>📝 Důležité informace</h3>
+            <p><strong>Co vzít s sebou:</strong></p>
+            <ul>
+                <li>Hygienické potřeby</li>
+                <li>Dostatek oblečení na celý týden</li>
+                <li>Pláštěnku nebo bundu do deště</li>
+                <li>Sportovní obuv a sandály</li>
+                <li>Plavky a ručník</li>
+                <li>Ochranný krém proti slunci</li>
+            </ul>
+
+            <p><strong>Začátek tábora:</strong> {camp.StartDate:dd.MM.yyyy} v 9:00 na místě {camp.Location}</p>
+            <p><strong>Konec tábora:</strong> {camp.EndDate:dd.MM.yyyy} ve 16:00</p>
+
+            <p style='margin-top: 30px;'>Těšíme se na skvělý týden plný zábavy a dobrodružství! 🌟</p>
+        </div>
+        <div class='footer'>
+            <p>S pozdravem,<br><strong>Tým Letních táborů Plzeň</strong></p>
+            <p style='margin-top: 10px; font-size: 11px;'>
+                📧 info@letnitabory.cz | 📞 +420 123 456 789<br>
+                🌐 www.letnitabory.cz
+            </p>
+        </div>
+    </div>
+</body>
+</html>
+";
+    }
+
+    private string GetPhotoGalleryAccessTemplate(
+        string parentName,
+        string childName,
+        Camp camp,
+        string accessCode,
+        string photoGalleryUrl)
+    {
+        return $@"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='UTF-8'>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+        .content {{ background: #ffffff; padding: 30px; border: 1px solid #e0e0e0; }}
+        .access-code {{ background: #667eea; color: white; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; border-radius: 5px; letter-spacing: 3px; margin: 20px 0; }}
+        .footer {{ background: #f5f5f5; padding: 20px; text-align: center; border-radius: 0 0 10px 10px; font-size: 12px; color: #666; }}
+        .button {{ display: inline-block; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }}
+        .highlight-box {{ background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; }}
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <div class='header'>
+            <h1>📸 Přístup k fotogalerii</h1>
+            <p>{camp.Name}</p>
+        </div>
+        <div class='content'>
+            <p>Dobrý den, <strong>{parentName}</strong>,</p>
+            
+            <p>Děkujeme, že jste si pro své dítě <strong>{childName}</strong> vybrali náš tábor <strong>{camp.Name}</strong>!</p>
+            
+            <p>Během tábora budeme pravidelně přidávat fotografie a aktualizace, abyste byli stále v obraze o tom, jak se vašemu dítěti daří.</p>
+
+            <h3 style='color: #667eea;'>🔑 Váš přístupový kód</h3>
+            <div class='access-code'>{accessCode}</div>
+
+            <div class='highlight-box'>
+                <p style='margin: 0;'><strong>⚠️ Důležité:</strong> Tento kód uschovejte a nikomu ho nesdělujte. S jeho pomocí získáte přístup k fotkám z tábora.</p>
+            </div>
+
+            <div style='text-align: center;'>
+                <a href='{photoGalleryUrl}' class='button'>📸 Zobrazit fotogalerii</a>
+            </div>
+
+            <h3 style='color: #667eea;'>ℹ️ Jak to funguje?</h3>
+            <ul>
+                <li>Klikněte na tlačítko výše nebo navštivte adresu: <strong>{photoGalleryUrl}</strong></li>
+                <li>Zadejte svůj přístupový kód</li>
+                <li>Prohlédněte si všechny fotky z tábora</li>
+                <li>Fotky si můžete stáhnout nebo sdílet s rodinou</li>
+            </ul>
+
+            <h3 style='color: #667eea;'>📅 Informace o táboře</h3>
+            <p><strong>Termín:</strong> {camp.StartDate:dd.MM.yyyy} - {camp.EndDate:dd.MM.yyyy}</p>
+            <p><strong>Místo:</strong> {camp.Location}</p>
+            
+            <p style='margin-top: 30px;'>Budeme rádi, když budete sledovat aktualizace z tábora a uvidíte, jak skvělý čas vaše dítě prožívá! 🎉</p>
+        </div>
+        <div class='footer'>
+            <p>S pozdravem,<br><strong>Tým Letních táborů Plzeň</strong></p>
+            <p style='margin-top: 10px; font-size: 11px;'>
+                📧 info@letnitabory.cz | 📞 +420 123 456 789<br>
+                🌐 www.letnitabory.cz
+            </p>
+        </div>
+    </div>
+</body>
+</html>
+";
     }
 }
 

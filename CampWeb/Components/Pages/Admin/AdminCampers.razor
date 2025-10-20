@@ -4,6 +4,7 @@
 @using CampWeb.Services
 @using Microsoft.AspNetCore.Authorization
 @inject ICampService CampService
+@inject IEmailService EmailService
 @inject IJSRuntime JSRuntime
 @inject ILogger<AdminCampers> Logger
 @attribute [Authorize(Roles = "Admin,SuperAdmin")]
@@ -24,6 +25,17 @@
                     <button class="btn btn-success me-2" @onclick="ExportToCsv">
                         <i class="fas fa-download me-2"></i>
                         Export CSV
+                    </button>
+                    <button class="btn btn-primary" @onclick="SendBulkEmails" disabled="@isSendingEmails">
+                        @if (isSendingEmails)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                        }
+                        else
+                        {
+                            <i class="fas fa-envelope-bulk me-2"></i>
+                        }
+                        Poslat hromadné emaily
                     </button>
                 </div>
             </div>
@@ -246,28 +258,19 @@
                                         <code class="text-primary small">@registration.AccessCode</code>
                                     </td>
                                     <td>
-                                        <div class="dropdown">
-                                            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                                                <i class="fas fa-ellipsis-v"></i>
+                                        <div class="btn-group">
+                                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => ViewRegistrationDetail(registration)" title="Detail">
+                                                <i class="fas fa-eye"></i>
                                             </button>
-                                            <ul class="dropdown-menu">
-                                                <li>
-                                                    <button class="dropdown-item" @onclick="() => ViewRegistrationDetail(registration)">
-                                                        <i class="fas fa-eye me-2"></i>Detail
-                                                    </button>
-                                                </li>
-                                                <li>
-                                                    <button class="dropdown-item" @onclick="() => UpdateRegistrationStatus(registration)">
-                                                        <i class="fas fa-edit me-2"></i>Změnit stav
-                                                    </button>
-                                                </li>
-                                                <li><hr class="dropdown-divider"></li>
-                                                <li>
-                                                    <button class="dropdown-item text-danger" @onclick="() => CancelRegistration(registration)">
-                                                        <i class="fas fa-times me-2"></i>Zrušit registraci
-                                                    </button>
-                                                </li>
-                                            </ul>
+                                            <button class="btn btn-sm btn-outline-primary" @onclick="() => UpdateRegistrationStatus(registration)" title="Změnit stav">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-success" @onclick="() => SendConfirmationEmail(registration)" title="Poslat email">
+                                                <i class="fas fa-envelope"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => CancelRegistration(registration)" title="Zrušit">
+                                                <i class="fas fa-times"></i>
+                                            </button>
                                         </div>
                                     </td>
                                 </tr>
@@ -377,6 +380,7 @@
     private string selectedStatus = "";
     private string searchTerm = "";
     private bool isLoading = true;
+    private bool isSendingEmails = false;
 
     protected override async Task OnInitializedAsync()
     {
@@ -511,6 +515,43 @@
         await JSRuntime.InvokeVoidAsync("showToast", "Info", "Funkce bude implementována", "info");
     }
 
+    private async Task SendConfirmationEmail(Registration registration)
+    {
+        try
+        {
+            var camp = camps.FirstOrDefault(c => c.Id == registration.CampId);
+            if (camp == null)
+            {
+                await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Tábor nebyl nalezen", "error");
+                return;
+            }
+
+            var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
+                $"Poslat potvrzovací email s přístupovým kódem pro {registration.ChildFullName} na adresu {registration.ParentEmail}?");
+            
+            if (confirmed)
+            {
+                var result = await EmailService.SendRegistrationConfirmationAsync(registration, camp);
+                
+                if (result)
+                {
+                    await JSRuntime.InvokeVoidAsync("showToast", "Úspěch", "Email byl úspěšně odeslán", "success");
+                    Logger.LogInformation("Confirmation email sent to {Email} for registration {RegId}", 
+                        registration.ParentEmail, registration.Id);
+                }
+                else
+                {
+                    await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se odeslat email", "error");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error sending confirmation email for registration {RegId}", registration.Id);
+            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se odeslat email", "error");
+        }
+    }
+
     private async Task CancelRegistration(Registration registration)
     {
         var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
@@ -554,6 +595,78 @@
             RegistrationStatus.Cancelled => "Zrušeno",
             _ => "Neznámý"
         };
+    }
+
+    private async Task SendBulkEmails()
+    {
+        try
+        {
+            // Get registrations to send emails to (paid and confirmed only)
+            var emailRecipients = filteredRegistrations
+                .Where(r => r.Status == RegistrationStatus.Paid || r.Status == RegistrationStatus.Confirmed)
+                .ToList();
+
+            if (!emailRecipients.Any())
+            {
+                await JSRuntime.InvokeVoidAsync("showToast", "Info", "Žádné registrace k odeslání", "info");
+                return;
+            }
+
+            var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
+                $"Opravdu chcete poslat potvrzovací emaily {emailRecipients.Count} registracím?");
+
+            if (!confirmed) return;
+
+            isSendingEmails = true;
+            StateHasChanged();
+
+            int successCount = 0;
+            int failCount = 0;
+
+            foreach (var registration in emailRecipients)
+            {
+                try
+                {
+                    var camp = camps.FirstOrDefault(c => c.Id == registration.CampId);
+                    if (camp != null)
+                    {
+                        var result = await EmailService.SendRegistrationConfirmationAsync(registration, camp);
+                        if (result)
+                            successCount++;
+                        else
+                            failCount++;
+
+                        // Small delay to avoid overwhelming SMTP server
+                        await Task.Delay(500);
+                    }
+                    else
+                    {
+                        failCount++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError(ex, "Error sending bulk email to {Email}", registration.ParentEmail);
+                    failCount++;
+                }
+            }
+
+            await JSRuntime.InvokeVoidAsync("showToast", "Hotovo", 
+                $"Odesláno: {successCount} úspěšně, {failCount} selhalo", 
+                failCount == 0 ? "success" : "warning");
+
+            Logger.LogInformation("Bulk email sent: {Success} successful, {Failed} failed", successCount, failCount);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error in bulk email sending");
+            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se odeslat emaily", "error");
+        }
+        finally
+        {
+            isSendingEmails = false;
+            StateHasChanged();
+        }
     }
 }
 
