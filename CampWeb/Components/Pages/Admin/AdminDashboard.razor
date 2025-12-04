@@ -210,7 +210,7 @@ else
                         <tr>
                             <td class="text-truncate" style="max-width:280px" title="@item.Name">@item.Name</td>
                             <td class="text-truncate" style="max-width:200px" title="@item.Location">@item.Location</td>
-                            <td>@item.StartDate:dd.MM.yyyy – @item.EndDate:dd.MM.yyyy</td>
+                            <td>@item.StartDate.ToString("dd.MM.yyyy") – @item.EndDate.ToString("dd.MM.yyyy")</td>
                             <td>@FormatCurrency(item.Price)</td>
                             <td>@item.RegisteredCount / @item.Capacity</td>
                             <td style="min-width:160px">

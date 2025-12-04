@@ -224,9 +224,10 @@
 
     public class QuickPostModel
     {
-        [Required, MinLength(0)] public string Title { get; set; } = "";
+        public string Title { get; set; } = "";
 
-        [Required, MinLength(0)] public string Content { get; set; } = "";
+        [Required(ErrorMessage = "Obsah zprávy je povinný")] 
+        public string Content { get; set; } = "";
 
         public List<IBrowserFile> Photos { get; set; } = new();
         public bool HasPhotos => Photos?.Any() == true;
@@ -335,10 +336,13 @@
             }
 
 // 2) Vytvořit záznam v timeline
+            var title = string.IsNullOrWhiteSpace(quickPostForm.Title) 
+                ? $"Aktualizace z {DateTime.Now:dd.MM.yyyy HH:mm}" 
+                : quickPostForm.Title;
             var update = new LiveUpdate
             {
                 CampId = selectedCampId,
-                Title = quickPostForm.Title,
+                Title = title,
                 Content = quickPostForm.Content,
                 PhotoUrl = coverUrl,
                 CreatedAt = DateTime.UtcNow

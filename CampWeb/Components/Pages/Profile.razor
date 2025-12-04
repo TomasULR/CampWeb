@@ -1,0 +1,406 @@
+@page "/profil"
+@using CampWeb.Services
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@using RegModel = CampWeb.Models.Registration
+@using CampWeb.Models
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject ICampService CampService
+@inject IJSRuntime JSRuntime
+@inject NavigationManager Navigation
+@inject ILogger<Profile> Logger
+@attribute [Authorize]
+@rendermode InteractiveServer
+
+<PageTitle>Můj profil - Letní Tábory Plzeň</PageTitle>
+
+<div class="container my-5">
+    <div class="row">
+        <div class="col-lg-4 mb-4">
+            <!-- Profile Card -->
+            <div class="card border-0 shadow-sm">
+                <div class="card-body text-center py-5">
+                    <div class="avatar-circle bg-primary text-white mx-auto mb-3">
+                        <i class="fas fa-user fa-2x"></i>
+                    </div>
+                    <h4 class="mb-1">@currentUser?.FullName</h4>
+                    <p class="text-muted mb-3">@currentUser?.Email</p>
+                    <div class="d-flex justify-content-center gap-2">
+                        <span class="badge bg-primary">
+                            <i class="fas fa-child me-1"></i>
+                            @registrations.Count registrací
+                        </span>
+                        @if (registrations.Any(r => r.Status == RegistrationStatus.Paid))
+                        {
+                            <span class="badge bg-success">
+                                <i class="fas fa-check me-1"></i>
+                                @registrations.Count(r => r.Status == RegistrationStatus.Paid) zaplaceno
+                            </span>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Stats -->
+            <div class="card border-0 shadow-sm mt-4">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0"><i class="fas fa-chart-bar me-2"></i>Statistiky</h6>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="text-muted">Registrace celkem</span>
+                        <strong>@registrations.Count</strong>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="text-muted">Zaplaceno</span>
+                        <strong class="text-success">@registrations.Count(r => r.Status == RegistrationStatus.Paid)</strong>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="text-muted">Čeká na platbu</span>
+                        <strong class="text-warning">@registrations.Count(r => r.Status == RegistrationStatus.Pending || r.Status == RegistrationStatus.Confirmed)</strong>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span class="text-muted">Člen od</span>
+                        <strong>@currentUser?.CreatedAt.ToString("dd.MM.yyyy")</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-8">
+            <!-- Profile Edit Form -->
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-user-edit me-2"></i>Osobní údaje</h5>
+                    @if (!isEditing)
+                    {
+                        <button class="btn btn-sm btn-outline-primary" @onclick="StartEditing">
+                            <i class="fas fa-edit me-1"></i> Upravit
+                        </button>
+                    }
+                </div>
+                <div class="card-body">
+                    @if (isEditing)
+                    {
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Jméno</label>
+                                <input type="text" class="form-control" @bind="editFirstName" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Příjmení</label>
+                                <input type="text" class="form-control" @bind="editLastName" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Email</label>
+                                <input type="email" class="form-control" @bind="editEmail" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Telefon</label>
+                                <input type="tel" class="form-control" @bind="editPhone" />
+                            </div>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-primary" @onclick="SaveProfile" disabled="@isSaving">
+                                @if (isSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                                <i class="fas fa-save me-1"></i> Uložit
+                            </button>
+                            <button class="btn btn-secondary" @onclick="CancelEditing">Zrušit</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label text-muted small">Jméno</label>
+                                <p class="mb-0 fw-bold">@currentUser?.FirstName</p>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label text-muted small">Příjmení</label>
+                                <p class="mb-0 fw-bold">@currentUser?.LastName</p>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label text-muted small">Email</label>
+                                <p class="mb-0 fw-bold">@currentUser?.Email</p>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label text-muted small">Telefon</label>
+                                <p class="mb-0 fw-bold">@(string.IsNullOrEmpty(currentUser?.PhoneNumber) ? "Neuvedeno" : currentUser.PhoneNumber)</p>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Change Password -->
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-key me-2"></i>Změna hesla</h5>
+                    @if (!isChangingPassword)
+                    {
+                        <button class="btn btn-sm btn-outline-warning" @onclick="() => isChangingPassword = true">
+                            <i class="fas fa-lock me-1"></i> Změnit heslo
+                        </button>
+                    }
+                </div>
+                @if (isChangingPassword)
+                {
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label">Současné heslo</label>
+                                <input type="password" class="form-control" @bind="currentPassword" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Nové heslo</label>
+                                <input type="password" class="form-control" @bind="newPassword" />
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Potvrzení nového hesla</label>
+                                <input type="password" class="form-control" @bind="confirmPassword" />
+                            </div>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-warning" @onclick="ChangePassword" disabled="@isChangingPasswordSaving">
+                                @if (isChangingPasswordSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                                <i class="fas fa-key me-1"></i> Změnit heslo
+                            </button>
+                            <button class="btn btn-secondary" @onclick="CancelPasswordChange">Zrušit</button>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <!-- Recent Registrations -->
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-campground me-2"></i>Moje registrace</h5>
+                    <a href="/moje-registrace" class="btn btn-sm btn-outline-primary">
+                        Zobrazit vše <i class="fas fa-arrow-right ms-1"></i>
+                    </a>
+                </div>
+                <div class="card-body p-0">
+                    @if (!registrations.Any())
+                    {
+                        <div class="text-center py-4">
+                            <i class="fas fa-campground text-muted display-4 mb-3"></i>
+                            <p class="text-muted">Zatím nemáte žádné registrace.</p>
+                            <a href="/tabory" class="btn btn-primary">Prohlédnout tábory</a>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="list-group list-group-flush">
+                            @foreach (var reg in registrations.Take(5))
+                            {
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <h6 class="mb-1">@reg.Camp.Name</h6>
+                                            <small class="text-muted">
+                                                <i class="fas fa-child me-1"></i> @reg.ChildFullName
+                                                <i class="fas fa-calendar ms-2 me-1"></i> @reg.Camp.StartDate.ToString("dd.MM.yyyy")
+                                            </small>
+                                        </div>
+                                        <span class="badge @GetStatusBadgeClass(reg.Status)">@GetStatusText(reg.Status)</span>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private ApplicationUser? currentUser;
+    private List<RegModel> registrations = new();
+    private bool isLoading = true;
+    
+    // Edit profile
+    private bool isEditing = false;
+    private bool isSaving = false;
+    private string editFirstName = "";
+    private string editLastName = "";
+    private string editEmail = "";
+    private string editPhone = "";
+
+    // Change password
+    private bool isChangingPassword = false;
+    private bool isChangingPasswordSaving = false;
+    private string currentPassword = "";
+    private string newPassword = "";
+    private string confirmPassword = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUserData();
+    }
+
+    private async Task LoadUserData()
+    {
+        try
+        {
+            isLoading = true;
+            var isAuthenticated = SignInManager.Context.User.Identity?.IsAuthenticated == true;
+            
+            if (isAuthenticated)
+            {
+                currentUser = await UserManager.GetUserAsync(SignInManager.Context.User);
+                if (currentUser != null)
+                {
+                    registrations = await CampService.GetUserRegistrationsAsync(currentUser.Id);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading user data");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void StartEditing()
+    {
+        editFirstName = currentUser?.FirstName ?? "";
+        editLastName = currentUser?.LastName ?? "";
+        editEmail = currentUser?.Email ?? "";
+        editPhone = currentUser?.PhoneNumber ?? "";
+        isEditing = true;
+    }
+
+    private void CancelEditing()
+    {
+        isEditing = false;
+    }
+
+    private async Task SaveProfile()
+    {
+        if (currentUser == null) return;
+
+        try
+        {
+            isSaving = true;
+            currentUser.FirstName = editFirstName;
+            currentUser.LastName = editLastName;
+            currentUser.PhoneNumber = editPhone;
+
+            if (currentUser.Email != editEmail)
+            {
+                var setEmailResult = await UserManager.SetEmailAsync(currentUser, editEmail);
+                if (!setEmailResult.Succeeded)
+                {
+                    await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se změnit email", "error");
+                    return;
+                }
+            }
+
+            var result = await UserManager.UpdateAsync(currentUser);
+            if (result.Succeeded)
+            {
+                await JSRuntime.InvokeVoidAsync("showToast", "Úspěch", "Profil byl aktualizován", "success");
+                isEditing = false;
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se aktualizovat profil", "error");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error saving profile");
+            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se aktualizovat profil", "error");
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void CancelPasswordChange()
+    {
+        isChangingPassword = false;
+        currentPassword = "";
+        newPassword = "";
+        confirmPassword = "";
+    }
+
+    private async Task ChangePassword()
+    {
+        if (currentUser == null) return;
+
+        if (newPassword != confirmPassword)
+        {
+            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Hesla se neshodují", "error");
+            return;
+        }
+
+        if (newPassword.Length < 6)
+        {
+            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Heslo musí mít alespoň 6 znaků", "error");
+            return;
+        }
+
+        try
+        {
+            isChangingPasswordSaving = true;
+            var result = await UserManager.ChangePasswordAsync(currentUser, currentPassword, newPassword);
+            if (result.Succeeded)
+            {
+                await JSRuntime.InvokeVoidAsync("showToast", "Úspěch", "Heslo bylo změněno", "success");
+                CancelPasswordChange();
+            }
+            else
+            {
+                var error = result.Errors.FirstOrDefault()?.Description ?? "Nepodařilo se změnit heslo";
+                await JSRuntime.InvokeVoidAsync("showToast", "Chyba", error, "error");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error changing password");
+            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se změnit heslo", "error");
+        }
+        finally
+        {
+            isChangingPasswordSaving = false;
+        }
+    }
+
+    private string GetStatusBadgeClass(RegistrationStatus status) => status switch
+    {
+        RegistrationStatus.Pending => "bg-warning text-dark",
+        RegistrationStatus.Confirmed => "bg-info",
+        RegistrationStatus.Paid => "bg-success",
+        RegistrationStatus.Cancelled => "bg-secondary",
+        RegistrationStatus.Refunded => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private string GetStatusText(RegistrationStatus status) => status switch
+    {
+        RegistrationStatus.Pending => "Čeká",
+        RegistrationStatus.Confirmed => "Potvrzeno",
+        RegistrationStatus.Paid => "Zaplaceno",
+        RegistrationStatus.Cancelled => "Zrušeno",
+        RegistrationStatus.Refunded => "Vráceno",
+        _ => "Neznámý"
+    };
+}
+
+<style>
+    .avatar-circle {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+</style>

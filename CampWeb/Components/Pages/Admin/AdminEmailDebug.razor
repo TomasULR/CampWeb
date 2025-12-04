@@ -1,0 +1,405 @@
+@page "/admin/email-debug"
+@using CampWeb.Models
+@using CampWeb.Services
+@using Microsoft.AspNetCore.Authorization
+@inject IEmailService EmailService
+@inject IConfiguration Configuration
+@inject IJSRuntime JSRuntime
+@inject ILogger<AdminEmailDebug> Logger
+@attribute [Authorize(Roles = "Admin,SuperAdmin")]
+@layout AdminLayout
+@rendermode InteractiveServer
+
+<PageTitle>Email Debug - Admin Panel</PageTitle>
+
+<div class="container-fluid py-3">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1 class="h3 mb-0"><i class="fas fa-envelope-open-text me-2"></i>Email Debug & Test</h1>
+            <p class="text-muted">Testování odesílání emailů a náhled šablon</p>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- SMTP Configuration Status -->
+        <div class="col-lg-4 mb-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-cog me-2"></i>SMTP Konfigurace</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm">
+                        <tr>
+                            <td><strong>Server:</strong></td>
+                            <td>@(string.IsNullOrEmpty(smtpServer) ? "<span class='text-danger'>Není nastaveno</span>" : smtpServer)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Port:</strong></td>
+                            <td>@smtpPort</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Uživatel:</strong></td>
+                            <td>@(string.IsNullOrEmpty(smtpUsername) ? "<span class='text-danger'>Není nastaveno</span>" : MaskEmail(smtpUsername))</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Odesílatel:</strong></td>
+                            <td>@fromEmail</td>
+                        </tr>
+                        <tr>
+                            <td><strong>SSL:</strong></td>
+                            <td>@(enableSsl ? "<span class='text-success'>Zapnuto</span>" : "<span class='text-warning'>Vypnuto</span>")</td>
+                        </tr>
+                    </table>
+                    
+                    @if (string.IsNullOrEmpty(smtpServer) || string.IsNullOrEmpty(smtpUsername))
+                    {
+                        <div class="alert alert-warning small mb-0">
+                            <i class="fas fa-exclamation-triangle me-1"></i>
+                            <strong>SMTP není nakonfigurován!</strong><br>
+                            Emaily se nebudou odesílat. Nastavte v <code>appsettings.json</code>:
+                            <pre class="mt-2 mb-0 small">
+"Email": {
+  "SmtpServer": "smtp.gmail.com",
+  "SmtpPort": 587,
+  "Username": "vas@gmail.com",
+  "Password": "app-password",
+  "FromEmail": "vas@gmail.com"
+}</pre>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-success small mb-0">
+                            <i class="fas fa-check-circle me-1"></i>
+                            SMTP je nakonfigurován a připraven k odesílání.
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Gmail Setup Guide -->
+            <div class="card border-0 shadow-sm mt-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fab fa-google me-2"></i>Gmail Nastavení</h5>
+                </div>
+                <div class="card-body small">
+                    <p><strong>Pro použití Gmail SMTP:</strong></p>
+                    <ol class="ps-3">
+                        <li>Přihlaste se do Google účtu</li>
+                        <li>Jděte na <a href="https://myaccount.google.com/apppasswords" target="_blank">App Passwords</a></li>
+                        <li>Vytvořte nové heslo pro aplikaci</li>
+                        <li>Použijte toto heslo v <code>appsettings.json</code></li>
+                    </ol>
+                    <div class="alert alert-info mb-0">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Potřebujete mít zapnuté dvoufázové ověření.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Test Email Form -->
+        <div class="col-lg-8 mb-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-paper-plane me-2"></i>Odeslat testovací email</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Příjemce *</label>
+                            <input type="email" class="form-control" @bind="testTo" placeholder="test@example.com" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Předmět</label>
+                            <input type="text" class="form-control" @bind="testSubject" placeholder="Testovací email" />
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Obsah emailu</label>
+                        <textarea class="form-control" rows="5" @bind="testBody" 
+                            placeholder="Obsah testovacího emailu..."></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Rychlé šablony</label>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => SetTestTemplate(TemplateSimple)">
+                                Jednoduchý test
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => SetTestTemplate(TemplateRegistration)">
+                                Potvrzení registrace
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => SetTestTemplate(TemplatePayment)">
+                                Výzva k platbě
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => SetTestTemplate(TemplatePhotos)">
+                                Fotky k dispozici
+                            </button>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" @onclick="SendTestEmail" disabled="@isSending">
+                        @if (isSending)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="fas fa-paper-plane me-1"></i> Odeslat testovací email
+                    </button>
+                </div>
+            </div>
+
+            <!-- Email Preview -->
+            <div class="card border-0 shadow-sm mt-4">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="fas fa-eye me-2"></i>Náhled emailu</h5>
+                </div>
+                <div class="card-body">
+                    @if (!string.IsNullOrEmpty(testBody))
+                    {
+                        <div class="border rounded p-3 bg-light">
+                            <div class="mb-2">
+                                <strong>Předmět:</strong> @testSubject
+                            </div>
+                            <hr>
+                            <div style="white-space: pre-wrap;">@testBody</div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="text-muted text-center py-4">
+                            <i class="fas fa-file-alt display-4 mb-3"></i>
+                            <p>Zadejte obsah emailu pro zobrazení náhledu</p>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Email Log -->
+            <div class="card border-0 shadow-sm mt-4">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-history me-2"></i>Historie odeslaných testů</h5>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="ClearLog">
+                        <i class="fas fa-trash me-1"></i> Vymazat
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    @if (!emailLog.Any())
+                    {
+                        <div class="text-center py-4 text-muted">
+                            <i class="fas fa-inbox display-4 mb-3"></i>
+                            <p>Žádné odeslané emaily</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="list-group list-group-flush">
+                            @foreach (var log in emailLog.OrderByDescending(l => l.SentAt))
+                            {
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div>
+                                            <strong>@log.To</strong>
+                                            <small class="text-muted d-block">@log.Subject</small>
+                                        </div>
+                                        <div class="text-end">
+                                            <span class="badge @(log.Success ? "bg-success" : "bg-danger")">
+                                                @(log.Success ? "Odesláno" : "Chyba")
+                                            </span>
+                                            <small class="text-muted d-block">@log.SentAt.ToString("HH:mm:ss")</small>
+                                        </div>
+                                    </div>
+                                    @if (!log.Success && !string.IsNullOrEmpty(log.Error))
+                                    {
+                                        <small class="text-danger d-block mt-1">@log.Error</small>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    // Template constants
+    private const string TemplateSimple = "simple";
+    private const string TemplateRegistration = "registration";
+    private const string TemplatePayment = "payment";
+    private const string TemplatePhotos = "photos";
+
+    private string smtpServer = "";
+    private int smtpPort = 587;
+    private string smtpUsername = "";
+    private string fromEmail = "";
+    private bool enableSsl = true;
+
+    private string testTo = "";
+    private string testSubject = "Testovací email - Letní Tábory Plzeň";
+    private string testBody = "";
+    private bool isSending = false;
+
+    private List<EmailLogEntry> emailLog = new();
+
+    protected override void OnInitialized()
+    {
+        LoadConfiguration();
+    }
+
+    private void LoadConfiguration()
+    {
+        smtpServer = Configuration["Email:SmtpServer"] ?? "";
+        smtpPort = Configuration.GetValue<int>("Email:SmtpPort", 587);
+        smtpUsername = Configuration["Email:Username"] ?? "";
+        fromEmail = Configuration["Email:FromEmail"] ?? "";
+        enableSsl = Configuration.GetValue<bool>("Email:EnableSsl", true);
+    }
+
+    private string MaskEmail(string email)
+    {
+        if (string.IsNullOrEmpty(email) || !email.Contains('@')) return email;
+        var parts = email.Split('@');
+        var name = parts[0];
+        if (name.Length <= 3) return email;
+        return name[..2] + "***@" + parts[1];
+    }
+
+    private void SetTestTemplate(string template)
+    {
+        switch (template)
+        {
+            case "simple":
+                testSubject = "Testovací email - Letní Tábory Plzeň";
+                testBody = @"Dobrý den,
+
+toto je testovací email z aplikace Letní Tábory Plzeň.
+
+Pokud vidíte tento email, SMTP konfigurace funguje správně!
+
+S pozdravem,
+Automatický systém";
+                break;
+            case "registration":
+                testSubject = "Potvrzení registrace - Letní tábor Dobříš 2025";
+                testBody = @"Dobrý den Jan Novák,
+
+děkujeme za registraci Vašeho dítěte Petr Novák na tábor Letní tábor Dobříš 2025.
+
+📅 Termín: 1.7.2025 - 14.7.2025
+📍 Místo: Dobříš, Středočeský kraj
+💰 Cena: 8 500 Kč
+
+Váš přístupový kód pro sledování aktualit: ABC12345
+
+Platební údaje:
+Číslo účtu: 123456789/0800
+Variabilní symbol: 12345
+
+S pozdravem,
+Tým Letních táborů Plzeň";
+                break;
+            case "payment":
+                testSubject = "Připomínka platby - Letní tábor Dobříš 2025";
+                testBody = @"Dobrý den Jan Novák,
+
+rádi bychom Vám připomněli úhradu registrace na tábor Letní tábor Dobříš 2025.
+
+Dítě: Petr Novák
+Částka: 8 500 Kč
+Splatnost: do 15.6.2025
+
+Platební údaje:
+Číslo účtu: 123456789/0800
+Variabilní symbol: 12345
+
+V případě dotazů nás neváhejte kontaktovat.
+
+S pozdravem,
+Tým Letních táborů Plzeň";
+                break;
+            case "photos":
+                testSubject = "Nové fotky z tábora - Letní tábor Dobříš 2025";
+                testBody = @"Dobrý den Jan Novák,
+
+máme pro Vás skvělou zprávu! Nové fotky z tábora jsou k dispozici.
+
+🏕️ Tábor: Letní tábor Dobříš 2025
+📸 Počet nových fotek: 45
+
+Pro přístup k fotogalerii použijte kód: ABC12345
+
+S pozdravem,
+Tým Letních táborů Plzeň";
+                break;
+        }
+    }
+
+    private async Task SendTestEmail()
+    {
+        if (string.IsNullOrWhiteSpace(testTo))
+        {
+            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Zadejte email příjemce", "error");
+            return;
+        }
+
+        try
+        {
+            isSending = true;
+
+            var bodyHtml = testBody.Replace("\n", "<br>");
+            var year = DateTime.Now.Year.ToString();
+            var htmlBody = "<!DOCTYPE html><html><head><meta charset='UTF-8'></head><body style='font-family: Arial, sans-serif; line-height: 1.6;'><div style='max-width: 600px; margin: 0 auto; padding: 20px; background: #f9f9f9;'><div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0;'><h1 style='margin: 0;'>🏕️ Letní Tábory Plzeň</h1></div><div style='background: white; padding: 30px; border: 1px solid #e0e0e0;'>" + bodyHtml + "</div><div style='background: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #666; border-radius: 0 0 10px 10px;'>Tento email byl odeslán z testovacího rozhraní.<br>© " + year + " Letní Tábory Plzeň</div></div></body></html>";
+
+            var success = await EmailService.SendEmailAsync(testTo, testSubject, htmlBody);
+            
+            emailLog.Add(new EmailLogEntry
+            {
+                To = testTo,
+                Subject = testSubject,
+                Success = success,
+                SentAt = DateTime.Now,
+                Error = success ? null : "Email se nepodařilo odeslat"
+            });
+
+            if (success)
+            {
+                await JSRuntime.InvokeVoidAsync("showToast", "Úspěch", "Testovací email byl odeslán", "success");
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se odeslat email", "error");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error sending test email");
+            emailLog.Add(new EmailLogEntry
+            {
+                To = testTo,
+                Subject = testSubject,
+                Success = false,
+                SentAt = DateTime.Now,
+                Error = ex.Message
+            });
+            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", ex.Message, "error");
+        }
+        finally
+        {
+            isSending = false;
+        }
+    }
+
+    private void ClearLog()
+    {
+        emailLog.Clear();
+    }
+
+    private class EmailLogEntry
+    {
+        public string To { get; set; } = "";
+        public string Subject { get; set; } = "";
+        public bool Success { get; set; }
+        public DateTime SentAt { get; set; }
+        public string? Error { get; set; }
+    }
+}

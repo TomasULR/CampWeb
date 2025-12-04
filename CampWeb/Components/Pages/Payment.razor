@@ -118,6 +118,7 @@
                                     Způsob platby
                                 </h4>
 
+                                @* Google Pay a Apple Pay jsou dočasně nedostupné - vyžadují platební bránu a Apple Developer účet
                                 <!-- Digital Payment Methods -->
                                 <div class="col">
                                     <!-- Google Pay Section -->
@@ -129,26 +130,6 @@
                                                     <div>
                                                         <h5 class="mb-1 fw-bold">Google Pay</h5>
                                                         <p class="text-muted small mb-0">Pro Android zařízení</p>
-                                                    </div>
-                                                </div>
-                                                <div class="payment-features mb-3">
-                                                    <small class="text-success d-block">
-                                                        <i class="fas fa-shield-alt me-1"></i>
-                                                        Šifrované a bezpečné
-                                                    </small>
-                                                    <small class="text-success d-block">
-                                                        <i class="fas fa-bolt me-1"></i>
-                                                        Okamžité zpracování
-                                                    </small>
-                                                </div>
-                                                <div class="google-pay-container text-center">
-                                                    <div id="google-pay-button-container" style="min-height: 50px;">
-                                                        <div class="text-muted">
-                                                            <small>
-                                                                <i class="fas fa-info-circle me-1"></i>
-                                                                Google Pay se načítá...
-                                                            </small>
-                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -166,33 +147,17 @@
                                                         <p class="text-muted small mb-0">Pro Apple zařízení</p>
                                                     </div>
                                                 </div>
-                                                <div class="payment-features mb-3">
-                                                    <small class="text-success d-block">
-                                                        <i class="fas fa-fingerprint me-1"></i>
-                                                        Touch/Face ID ověření
-                                                    </small>
-                                                    <small class="text-success d-block">
-                                                        <i class="fas fa-lock me-1"></i>
-                                                        Maximální bezpečnost
-                                                    </small>
-                                                </div>
-                                                <div class="apple-pay-container text-center">
-                                                    <div id="apple-pay-button-container" style="min-height: 50px;">
-                                                        <div class="text-muted">
-                                                            <small>
-                                                                <i class="fas fa-info-circle me-1"></i>
-                                                                Apple Pay se načítá...
-                                                            </small>
-                                                        </div>
-                                                    </div>
-                                                </div>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-
-                                <div class="divider-with-text mb-4">
-                                    <span class="text-muted small">NEBO</span>
+                                *@
+                                
+                                <!-- Info o dočasně nedostupných platebních metodách -->
+                                <div class="alert alert-info border-0 shadow-sm mb-4">
+                                    <i class="fas fa-info-circle me-2"></i>
+                                    <strong>Online platby kartou (Google Pay, Apple Pay)</strong> jsou momentálně v přípravě.
+                                    Prosím použijte bankovní převod níže.
                                 </div>
 
                                 <!-- Alternativní platební metody -->

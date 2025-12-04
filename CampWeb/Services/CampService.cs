@@ -16,6 +16,11 @@ public interface ICampService
     Task<List<Registration>> GetUserRegistrationsAsync(string userId);
     Task<Registration?> GetRegistrationByAccessCodeAsync(string accessCode);
 
+    // Admin - Registration management:
+    Task<Registration?> GetRegistrationByIdAsync(int registrationId);
+    Task<bool> UpdateRegistrationStatusAsync(int registrationId, RegistrationStatus status);
+    Task<bool> UpdateRegistrationAsync(Registration registration);
+
     // Admin:
     Task<Camp> CreateAsync(Camp camp);
     Task<Camp?> UpdateAsync(Camp camp);
@@ -451,5 +456,75 @@ public class CampService : ICampService
             "14-17"  => campAge.Contains("14") || campAge.Contains("15") || campAge.Contains("16") || campAge.Contains("17"),
             _        => true
         };
+    }
+
+    // ========= Registration Management =========
+
+    public async Task<Registration?> GetRegistrationByIdAsync(int registrationId)
+    {
+        try
+        {
+            await using var ctx = await _dbFactory.CreateDbContextAsync();
+            return await ctx.Registrations
+                .Include(r => r.Camp)
+                .FirstOrDefaultAsync(r => r.Id == registrationId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting registration by ID {RegistrationId}", registrationId);
+            return null;
+        }
+    }
+
+    public async Task<bool> UpdateRegistrationStatusAsync(int registrationId, RegistrationStatus status)
+    {
+        try
+        {
+            await using var ctx = await _dbFactory.CreateDbContextAsync();
+            var registration = await ctx.Registrations.FindAsync(registrationId);
+            if (registration == null) return false;
+
+            registration.Status = status;
+            await ctx.SaveChangesAsync();
+            
+            _logger.LogInformation("Registration {RegistrationId} status updated to {Status}", registrationId, status);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating registration status for {RegistrationId}", registrationId);
+            return false;
+        }
+    }
+
+    public async Task<bool> UpdateRegistrationAsync(Registration registration)
+    {
+        try
+        {
+            await using var ctx = await _dbFactory.CreateDbContextAsync();
+            var existing = await ctx.Registrations.FindAsync(registration.Id);
+            if (existing == null) return false;
+
+            existing.ChildName = registration.ChildName;
+            existing.ChildSurname = registration.ChildSurname;
+            existing.ChildBirthDate = registration.ChildBirthDate;
+            existing.ParentName = registration.ParentName;
+            existing.ParentEmail = registration.ParentEmail;
+            existing.ParentPhone = registration.ParentPhone;
+            existing.SpecialRequirements = registration.SpecialRequirements;
+            existing.HasMedicalIssues = registration.HasMedicalIssues;
+            existing.MedicalIssuesDescription = registration.MedicalIssuesDescription;
+            existing.Status = registration.Status;
+
+            await ctx.SaveChangesAsync();
+            
+            _logger.LogInformation("Registration {RegistrationId} updated", registration.Id);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating registration {RegistrationId}", registration.Id);
+            return false;
+        }
     }
 }

@@ -133,7 +133,8 @@ public enum RegistrationStatus
     Pending,
     Confirmed,
     Paid,
-    Cancelled
+    Cancelled,
+    Refunded
 }
 
 public class CampPhoto

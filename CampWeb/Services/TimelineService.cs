@@ -12,6 +12,8 @@ public interface ITimelineService
     Task<bool> DeleteUpdateAsync(int updateId);
     Task<CampPhoto?> UploadPhotoAsync(int campId, string fileName, string? description);
     Task<List<CampPhoto>> GetPhotosByAccessCodeAsync(string accessCode);
+    Task<bool> ValidateAccessCodeAsync(string accessCode);
+    Task<string?> GetCampNameByAccessCodeAsync(string accessCode);
 }
 
 public class TimelineService : ITimelineService
@@ -185,6 +187,54 @@ public class TimelineService : ITimelineService
         {
             _logger.LogError(ex, "Error getting updates by access code");
             return new List<LiveUpdate>();
+        }
+    }
+
+    public async Task<bool> ValidateAccessCodeAsync(string accessCode)
+    {
+        try
+        {
+            // Check if access code exists in Registrations
+            var registrationExists = await _context.Registrations
+                .AnyAsync(r => r.AccessCode == accessCode);
+            
+            if (registrationExists) return true;
+
+            // Check if access code exists in Camps
+            var campExists = await _context.Camps
+                .AnyAsync(c => c.AccessCode == accessCode);
+            
+            return campExists;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error validating access code");
+            return false;
+        }
+    }
+
+    public async Task<string?> GetCampNameByAccessCodeAsync(string accessCode)
+    {
+        try
+        {
+            // First check registrations
+            var registration = await _context.Registrations
+                .Include(r => r.Camp)
+                .FirstOrDefaultAsync(r => r.AccessCode == accessCode);
+            
+            if (registration?.Camp != null)
+                return registration.Camp.Name;
+
+            // Then check camps directly
+            var camp = await _context.Camps
+                .FirstOrDefaultAsync(c => c.AccessCode == accessCode);
+            
+            return camp?.Name;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting camp name by access code");
+            return null;
         }
     }
 }

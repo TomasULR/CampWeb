@@ -3,6 +3,7 @@
 @using CampWeb.Services
 @inject ITimelineService TimelineService
 @inject IJSRuntime JSRuntime
+@implements IDisposable
 
 <PageTitle>Fotky z tábora</PageTitle>
 
@@ -53,7 +54,7 @@
                         <div class="text-muted small">Přístupový kód: <strong>@AccessCode</strong></div>
                     </div>
                     <div class="d-flex gap-2">
-                        <button class="btn btn-outline-secondary" @onclick="RefreshData" disabled="@isLoading">
+                        <button class="btn btn-outline-secondary" @onclick="async () => await RefreshData()" disabled="@isLoading">
                             @if (isLoading)
                             {
                                 <span class="spinner-border spinner-border-sm me-2"></span>
@@ -159,7 +160,19 @@
         <div class="lightbox-dialog" @onclick:stopPropagation="true">
             <button type="button" class="btn-close btn-close-white lightbox-close" @onclick="CloseLightbox"
                     aria-label="Zavřít"></button>
-            <img src="@selectedPhoto" alt="Foto" class="img-fluid rounded" style="max-height:80vh; max-width:100%;"/>
+            <div class="lightbox-image-container">
+                <img src="@selectedPhoto" 
+                     alt="Foto" 
+                     class="lightbox-image @(isZoomed ? "zoomed" : "")" 
+                     @onclick="ToggleZoom"
+                     style="cursor: @(isZoomed ? "zoom-out" : "zoom-in");"/>
+            </div>
+            <div class="lightbox-controls">
+                <button class="btn btn-light btn-sm" @onclick="ToggleZoom">
+                    <i class="fas @(isZoomed ? "fa-search-minus" : "fa-search-plus")"></i>
+                    @(isZoomed ? "Oddálit" : "Přiblížit")
+                </button>
+            </div>
         </div>
     </div>
 }
@@ -178,13 +191,18 @@
     private List<CampPhoto> photos = new();
     private List<LiveUpdate> liveUpdates = new();
 
-// Lightbox
+    // Lightbox
     private bool lightboxOpen = false;
     private string selectedPhoto = "";
+    private bool isZoomed = false;
+    
+    // Auto-refresh
+    private System.Threading.Timer? refreshTimer;
+    private const int RefreshIntervalSeconds = 30;
 
     protected override async Task OnParametersSetAsync()
     {
-// Přímý vstup s /fotky/{code}
+        // Přímý vstup s /fotky/{code}
         if (!string.IsNullOrWhiteSpace(AccessCode) && !isAuthenticated)
         {
             inputAccessCode = AccessCode!;
@@ -211,28 +229,34 @@
 
             isLoading = true;
 
-// Tyto metody v TimelineService podporují kód registrace i kód tábora.
-            var tempPhotos = await TimelineService.GetPhotosByAccessCodeAsync(code);
-            var tempUpdates = await TimelineService.GetUpdatesByAccessCodeAsync(code);
-
-            if ((tempPhotos?.Any() == true) || (tempUpdates?.Any() == true))
-            {
-                isAuthenticated = true;
-                AccessCode = code;
-
-                photos = (tempPhotos ?? new()).OrderByDescending(p => p.UploadDate).ToList();
-                liveUpdates = (tempUpdates ?? new()).OrderByDescending(u => u.CreatedAt).ToList();
-
-                campName = photos.FirstOrDefault()?.Camp?.Name
-                           ?? liveUpdates.FirstOrDefault()?.Camp?.Name
-                           ?? "Tábor";
-            }
-            else
+            // Ověříme, zda kód existuje (buď registrace nebo tábor)
+            var isValidCode = await TimelineService.ValidateAccessCodeAsync(code);
+            
+            if (!isValidCode)
             {
                 isAuthenticated = false;
                 showError = true;
-                errorMessage = "Neplatný přístupový kód, nebo zatím nejsou k dispozici žádné fotky.";
+                errorMessage = "Neplatný přístupový kód.";
+                return;
             }
+
+            // Kód je platný, načteme data
+            isAuthenticated = true;
+            AccessCode = code;
+
+            var tempPhotos = await TimelineService.GetPhotosByAccessCodeAsync(code);
+            var tempUpdates = await TimelineService.GetUpdatesByAccessCodeAsync(code);
+            
+            photos = (tempPhotos ?? new()).OrderByDescending(p => p.UploadDate).ToList();
+            liveUpdates = (tempUpdates ?? new()).OrderByDescending(u => u.CreatedAt).ToList();
+
+            campName = photos.FirstOrDefault()?.Camp?.Name
+                       ?? liveUpdates.FirstOrDefault()?.Camp?.Name
+                       ?? await TimelineService.GetCampNameByAccessCodeAsync(code)
+                       ?? "Tábor";
+
+            // Start auto-refresh after successful validation
+            StartAutoRefresh();
         }
         catch
         {
@@ -248,9 +272,32 @@
 
     private async Task RefreshData()
     {
-        if (!string.IsNullOrWhiteSpace(AccessCode))
+        if (!string.IsNullOrWhiteSpace(AccessCode) && isAuthenticated)
         {
-            await ValidateAccessCode();
+            try
+            {
+                // Silent refresh - don't show errors or loading state
+                var tempPhotos = await TimelineService.GetPhotosByAccessCodeAsync(AccessCode);
+                var tempUpdates = await TimelineService.GetUpdatesByAccessCodeAsync(AccessCode);
+                
+                photos = (tempPhotos ?? new()).OrderByDescending(p => p.UploadDate).ToList();
+                liveUpdates = (tempUpdates ?? new()).OrderByDescending(u => u.CreatedAt).ToList();
+
+                // Update camp name if we didn't have it before
+                if (string.IsNullOrEmpty(campName) || campName == "Tábor")
+                {
+                    campName = photos.FirstOrDefault()?.Camp?.Name
+                               ?? liveUpdates.FirstOrDefault()?.Camp?.Name
+                               ?? await TimelineService.GetCampNameByAccessCodeAsync(AccessCode)
+                               ?? "Tábor";
+                }
+
+                StateHasChanged();
+            }
+            catch
+            {
+                // Silent failure - don't interrupt user experience
+            }
         }
     }
 
@@ -272,6 +319,12 @@
     {
         lightboxOpen = false;
         selectedPhoto = "";
+        isZoomed = false;
+    }
+
+    private void ToggleZoom()
+    {
+        isZoomed = !isZoomed;
     }
 
     private async Task DownloadAll()
@@ -279,6 +332,36 @@
         if (!photos.Any()) return;
         var urls = photos.Select(p => p.FilePath).ToArray();
         await JSRuntime.InvokeVoidAsync("photoAccess_downloadMany", urls);
+    }
+
+    private void StartAutoRefresh()
+    {
+        StopAutoRefresh();
+        refreshTimer = new System.Threading.Timer(async _ =>
+        {
+            try
+            {
+                await InvokeAsync(async () =>
+                {
+                    if (isAuthenticated && !string.IsNullOrWhiteSpace(AccessCode))
+                    {
+                        await RefreshData();
+                    }
+                });
+            }
+            catch { /* ignore */ }
+        }, null, TimeSpan.FromSeconds(RefreshIntervalSeconds), TimeSpan.FromSeconds(RefreshIntervalSeconds));
+    }
+
+    private void StopAutoRefresh()
+    {
+        refreshTimer?.Dispose();
+        refreshTimer = null;
+    }
+
+    public void Dispose()
+    {
+        StopAutoRefresh();
     }
 
 }
@@ -298,16 +381,47 @@
     .lightbox-backdrop {
         position: fixed;
         inset: 0;
-        background: rgba(0, 0, 0, .7);
+        background: rgba(0, 0, 0, .9);
         display: flex;
         align-items: center;
         justify-content: center;
         z-index: 1050;
+        overflow: auto;
     }
 
     .lightbox-dialog {
         position: relative;
         padding: 0.5rem;
+        max-width: 95vw;
+        max-height: 95vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .lightbox-image-container {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: auto;
+        max-height: 85vh;
+    }
+
+    .lightbox-image {
+        max-width: 100%;
+        max-height: 80vh;
+        object-fit: contain;
+        transition: transform 0.3s ease;
+        border-radius: 4px;
+    }
+
+    .lightbox-image.zoomed {
+        max-width: none;
+        max-height: none;
+        width: auto;
+        height: auto;
+        transform: scale(1.5);
     }
 
     .lightbox-close {
@@ -315,6 +429,14 @@
         top: 8px;
         right: 8px;
         filter: invert(1);
+        z-index: 1051;
+    }
+
+    .lightbox-controls {
+        margin-top: 1rem;
+        display: flex;
+        gap: 0.5rem;
+        z-index: 1051;
     }
 </style>
 

@@ -66,6 +66,7 @@
                                 <option value="Confirmed">Potvrzeno</option>
                                 <option value="Paid">Zaplaceno</option>
                                 <option value="Cancelled">Zrušeno</option>
+                                <option value="Refunded">Vráceno</option>
                             </select>
                         </div>
                         <div class="col-md-3 mb-3">
@@ -265,8 +266,11 @@
                                             <button class="btn btn-sm btn-outline-primary" @onclick="() => UpdateRegistrationStatus(registration)" title="Změnit stav">
                                                 <i class="fas fa-edit"></i>
                                             </button>
-                                            <button class="btn btn-sm btn-outline-success" @onclick="() => SendConfirmationEmail(registration)" title="Poslat email">
+                                            <button class="btn btn-sm btn-outline-info" @onclick="() => OpenEmailModal(registration)" title="Vlastní email">
                                                 <i class="fas fa-envelope"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-success" @onclick="() => SendConfirmationEmail(registration)" title="Potvrzovací email">
+                                                <i class="fas fa-paper-plane"></i>
                                             </button>
                                             <button class="btn btn-sm btn-outline-danger" @onclick="() => CancelRegistration(registration)" title="Zrušit">
                                                 <i class="fas fa-times"></i>
@@ -361,6 +365,211 @@
                     </div>
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" @onclick="CloseModal">Zavřít</button>
+                        <button type="button" class="btn btn-primary" @onclick="() => OpenEditModal(selectedRegistration!)">
+                            <i class="fas fa-edit me-1"></i> Upravit
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Status Change Modal -->
+    @if (showStatusModal && statusChangeRegistration != null)
+    {
+        <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Změna stavu - @statusChangeRegistration.ChildFullName</h5>
+                        <button type="button" class="btn-close" @onclick="CloseStatusModal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label">Aktuální stav</label>
+                            <div>
+                                <span class="badge @GetStatusBadgeClass(statusChangeRegistration.Status) fs-6">
+                                    @GetStatusText(statusChangeRegistration.Status)
+                                </span>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Nový stav</label>
+                            <select class="form-select" @bind="newStatus">
+                                <option value="Pending">Čeká na potvrzení</option>
+                                <option value="Confirmed">Potvrzeno</option>
+                                <option value="Paid">Zaplaceno</option>
+                                <option value="Cancelled">Zrušeno</option>
+                                <option value="Refunded">Vráceno (refund)</option>
+                            </select>
+                        </div>
+                        <div class="alert alert-info small">
+                            <i class="fas fa-info-circle me-1"></i>
+                            <strong>Rychlé akce:</strong>
+                            <div class="mt-2 d-flex gap-2 flex-wrap">
+                                <button class="btn btn-sm btn-success" @onclick="() => QuickStatusChange(RegistrationStatus.Paid)">
+                                    <i class="fas fa-check me-1"></i> Označit jako zaplaceno
+                                </button>
+                                <button class="btn btn-sm btn-warning" @onclick="() => QuickStatusChange(RegistrationStatus.Refunded)">
+                                    <i class="fas fa-undo me-1"></i> Vrátit peníze
+                                </button>
+                                <button class="btn btn-sm btn-secondary" @onclick="() => QuickStatusChange(RegistrationStatus.Cancelled)">
+                                    <i class="fas fa-times me-1"></i> Zrušit
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" @onclick="CloseStatusModal">Zavřít</button>
+                        <button type="button" class="btn btn-primary" @onclick="SaveStatusChange">
+                            <i class="fas fa-save me-1"></i> Uložit změnu
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Edit Registration Modal -->
+    @if (showEditModal && editRegistration != null)
+    {
+        <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Upravit registraci</h5>
+                        <button type="button" class="btn-close" @onclick="CloseEditModal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6 class="text-primary mb-3">Údaje o dítěti</h6>
+                                <div class="mb-3">
+                                    <label class="form-label">Jméno</label>
+                                    <input type="text" class="form-control" @bind="editRegistration.ChildName" />
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Příjmení</label>
+                                    <input type="text" class="form-control" @bind="editRegistration.ChildSurname" />
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Datum narození</label>
+                                    <input type="date" class="form-control" @bind="editRegistration.ChildBirthDate" />
+                                </div>
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input" @bind="editRegistration.HasMedicalIssues" id="hasMedical" />
+                                        <label class="form-check-label" for="hasMedical">Zdravotní omezení</label>
+                                    </div>
+                                </div>
+                                @if (editRegistration.HasMedicalIssues)
+                                {
+                                    <div class="mb-3">
+                                        <label class="form-label">Popis zdravotních omezení</label>
+                                        <textarea class="form-control" rows="3" @bind="editRegistration.MedicalIssuesDescription"></textarea>
+                                    </div>
+                                }
+                            </div>
+                            <div class="col-md-6">
+                                <h6 class="text-primary mb-3">Kontaktní údaje</h6>
+                                <div class="mb-3">
+                                    <label class="form-label">Jméno rodiče</label>
+                                    <input type="text" class="form-control" @bind="editRegistration.ParentName" />
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Email</label>
+                                    <input type="email" class="form-control" @bind="editRegistration.ParentEmail" />
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Telefon</label>
+                                    <input type="tel" class="form-control" @bind="editRegistration.ParentPhone" />
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Stav registrace</label>
+                                    <select class="form-select" @bind="editRegistration.Status">
+                                        <option value="@RegistrationStatus.Pending">Čeká</option>
+                                        <option value="@RegistrationStatus.Confirmed">Potvrzeno</option>
+                                        <option value="@RegistrationStatus.Paid">Zaplaceno</option>
+                                        <option value="@RegistrationStatus.Cancelled">Zrušeno</option>
+                                        <option value="@RegistrationStatus.Refunded">Vráceno</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-12">
+                                <div class="mb-3">
+                                    <label class="form-label">Speciální požadavky</label>
+                                    <textarea class="form-control" rows="2" @bind="editRegistration.SpecialRequirements"></textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" @onclick="CloseEditModal">Zrušit</button>
+                        <button type="button" class="btn btn-primary" @onclick="SaveEditRegistration" disabled="@isSaving">
+                            @if (isSaving)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            <i class="fas fa-save me-1"></i> Uložit změny
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Custom Email Modal -->
+    @if (showEmailModal && emailRegistration != null)
+    {
+        <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Odeslat email - @emailRegistration.ParentEmail</h5>
+                        <button type="button" class="btn-close" @onclick="CloseEmailModal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label">Předmět</label>
+                            <input type="text" class="form-control" @bind="customEmailSubject" placeholder="Předmět emailu..." />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Obsah emailu</label>
+                            <textarea class="form-control" rows="8" @bind="customEmailBody" 
+                                placeholder="Napište obsah emailu...
+
+Dostupné proměnné (budou nahrazeny):
+{{ParentName}} - Jméno rodiče
+{{ChildName}} - Jméno dítěte
+{{CampName}} - Název tábora
+{{AccessCode}} - Přístupový kód"></textarea>
+                        </div>
+                        <div class="alert alert-secondary small">
+                            <strong>Rychlé šablony:</strong>
+                            <div class="mt-2 d-flex gap-2 flex-wrap">
+                                <button class="btn btn-sm btn-outline-primary" @onclick="() => SetEmailTemplate(TemplateConfirmation)">
+                                    Potvrzení registrace
+                                </button>
+                                <button class="btn btn-sm btn-outline-primary" @onclick="() => SetEmailTemplate(TemplatePayment)">
+                                    Výzva k platbě
+                                </button>
+                                <button class="btn btn-sm btn-outline-primary" @onclick="() => SetEmailTemplate(TemplatePhotos)">
+                                    Fotky k dispozici
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" @onclick="CloseEmailModal">Zrušit</button>
+                        <button type="button" class="btn btn-primary" @onclick="SendCustomEmail" disabled="@isSendingEmail">
+                            @if (isSendingEmail)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            <i class="fas fa-paper-plane me-1"></i> Odeslat email
+                        </button>
                     </div>
                 </div>
             </div>
@@ -370,6 +579,11 @@
 
 @code {
     [Parameter] public int? CampId { get; set; }
+
+    // Template constants
+    private const string TemplateConfirmation = "confirmation";
+    private const string TemplatePayment = "payment";
+    private const string TemplatePhotos = "photos";
 
     private List<Camp> camps = new();
     private List<Registration> allRegistrations = new();
@@ -381,6 +595,23 @@
     private string searchTerm = "";
     private bool isLoading = true;
     private bool isSendingEmails = false;
+    private bool isSaving = false;
+    private bool isSendingEmail = false;
+
+    // Status change modal
+    private bool showStatusModal = false;
+    private Registration? statusChangeRegistration;
+    private string newStatus = "";
+
+    // Edit registration modal
+    private bool showEditModal = false;
+    private Registration? editRegistration;
+
+    // Custom email modal
+    private bool showEmailModal = false;
+    private Registration? emailRegistration;
+    private string customEmailSubject = "";
+    private string customEmailBody = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -511,8 +742,200 @@
 
     private async Task UpdateRegistrationStatus(Registration registration)
     {
-        // Implementation for updating registration status
-        await JSRuntime.InvokeVoidAsync("showToast", "Info", "Funkce bude implementována", "info");
+        statusChangeRegistration = registration;
+        newStatus = registration.Status.ToString();
+        showStatusModal = true;
+        await Task.CompletedTask;
+    }
+
+    private void CloseStatusModal()
+    {
+        showStatusModal = false;
+        statusChangeRegistration = null;
+    }
+
+    private async Task QuickStatusChange(RegistrationStatus status)
+    {
+        if (statusChangeRegistration == null) return;
+        newStatus = status.ToString();
+        await SaveStatusChange();
+    }
+
+    private async Task SaveStatusChange()
+    {
+        if (statusChangeRegistration == null) return;
+
+        try
+        {
+            if (Enum.TryParse<RegistrationStatus>(newStatus, out var status))
+            {
+                var success = await CampService.UpdateRegistrationStatusAsync(statusChangeRegistration.Id, status);
+                if (success)
+                {
+                    statusChangeRegistration.Status = status;
+                    await JSRuntime.InvokeVoidAsync("showToast", "Úspěch", $"Stav změněn na: {GetStatusText(status)}", "success");
+                    CloseStatusModal();
+                    await LoadData();
+                }
+                else
+                {
+                    await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se změnit stav", "error");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error updating registration status");
+            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se změnit stav", "error");
+        }
+    }
+
+    private void OpenEditModal(Registration registration)
+    {
+        // Create a copy for editing
+        editRegistration = new Registration
+        {
+            Id = registration.Id,
+            CampId = registration.CampId,
+            ChildName = registration.ChildName,
+            ChildSurname = registration.ChildSurname,
+            ChildBirthDate = registration.ChildBirthDate,
+            ParentName = registration.ParentName,
+            ParentEmail = registration.ParentEmail,
+            ParentPhone = registration.ParentPhone,
+            SpecialRequirements = registration.SpecialRequirements,
+            HasMedicalIssues = registration.HasMedicalIssues,
+            MedicalIssuesDescription = registration.MedicalIssuesDescription,
+            Status = registration.Status,
+            AccessCode = registration.AccessCode,
+            RegistrationDate = registration.RegistrationDate,
+            UserId = registration.UserId
+        };
+        showEditModal = true;
+        CloseModal(); // Close detail modal if open
+    }
+
+    private void CloseEditModal()
+    {
+        showEditModal = false;
+        editRegistration = null;
+    }
+
+    private async Task SaveEditRegistration()
+    {
+        if (editRegistration == null) return;
+
+        try
+        {
+            isSaving = true;
+            var success = await CampService.UpdateRegistrationAsync(editRegistration);
+            if (success)
+            {
+                await JSRuntime.InvokeVoidAsync("showToast", "Úspěch", "Registrace byla aktualizována", "success");
+                CloseEditModal();
+                await LoadData();
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se aktualizovat registraci", "error");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error saving registration");
+            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se aktualizovat registraci", "error");
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void OpenEmailModal(Registration registration)
+    {
+        emailRegistration = registration;
+        customEmailSubject = "";
+        customEmailBody = "";
+        showEmailModal = true;
+    }
+
+    private void CloseEmailModal()
+    {
+        showEmailModal = false;
+        emailRegistration = null;
+    }
+
+    private void SetEmailTemplate(string template)
+    {
+        if (emailRegistration == null) return;
+        var camp = camps.FirstOrDefault(c => c.Id == emailRegistration.CampId);
+
+        switch (template)
+        {
+            case "confirmation":
+                customEmailSubject = "Potvrzení registrace - " + (camp?.Name ?? "Tábor");
+                customEmailBody = "Dobrý den {{ParentName}},\n\npotvrzujeme registraci Vašeho dítěte {{ChildName}} na tábor {{CampName}}.\n\nVáš přístupový kód pro sledování aktualit a fotek: {{AccessCode}}\n\nS pozdravem,\nTým Letních táborů Plzeň";
+                break;
+            case "payment":
+                customEmailSubject = "Výzva k platbě - " + (camp?.Name ?? "Tábor");
+                var price = camp?.Price.ToString("N0") ?? "---";
+                var regId = emailRegistration.Id.ToString();
+                customEmailBody = "Dobrý den {{ParentName}},\n\nprosíme o úhradu registrace Vašeho dítěte {{ChildName}} na tábor {{CampName}}.\n\nČástka: " + price + " Kč\nČíslo účtu: 123456789/0800\nVariabilní symbol: " + regId + "\n\nS pozdravem,\nTým Letních táborů Plzeň";
+                break;
+            case "photos":
+                customEmailSubject = "Fotky z tábora - " + (camp?.Name ?? "Tábor");
+                customEmailBody = "Dobrý den {{ParentName}},\n\nfotky z tábora {{CampName}} jsou nyní k dispozici!\n\nPro přístup použijte kód: {{AccessCode}}\n\nS pozdravem,\nTým Letních táborů Plzeň";
+                break;
+        }
+    }
+
+    private async Task SendCustomEmail()
+    {
+        if (emailRegistration == null || string.IsNullOrWhiteSpace(customEmailSubject) || string.IsNullOrWhiteSpace(customEmailBody))
+        {
+            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Vyplňte předmět a obsah emailu", "error");
+            return;
+        }
+
+        try
+        {
+            isSendingEmail = true;
+            var camp = camps.FirstOrDefault(c => c.Id == emailRegistration.CampId);
+
+            // Replace variables
+            var body = customEmailBody
+                .Replace("{{ParentName}}", emailRegistration.ParentName)
+                .Replace("{{ChildName}}", emailRegistration.ChildFullName)
+                .Replace("{{CampName}}", camp?.Name ?? "")
+                .Replace("{{AccessCode}}", emailRegistration.AccessCode);
+
+            var subject = customEmailSubject
+                .Replace("{{CampName}}", camp?.Name ?? "");
+
+            // Convert to HTML
+            var bodyHtml = body.Replace("\n", "<br>");
+            var htmlBody = "<!DOCTYPE html><html><head><meta charset='UTF-8'></head><body style='font-family: Arial, sans-serif; line-height: 1.6;'><div style='max-width: 600px; margin: 0 auto; padding: 20px;'>" + bodyHtml + "</div></body></html>";
+
+            var success = await EmailService.SendEmailAsync(emailRegistration.ParentEmail, subject, htmlBody);
+            if (success)
+            {
+                await JSRuntime.InvokeVoidAsync("showToast", "Úspěch", "Email byl odeslán", "success");
+                CloseEmailModal();
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se odeslat email", "error");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error sending custom email");
+            await JSRuntime.InvokeVoidAsync("showToast", "Chyba", "Nepodařilo se odeslat email", "error");
+        }
+        finally
+        {
+            isSendingEmail = false;
+        }
     }
 
     private async Task SendConfirmationEmail(Registration registration)
@@ -581,6 +1004,7 @@
             RegistrationStatus.Confirmed => "bg-info",
             RegistrationStatus.Paid => "bg-success",
             RegistrationStatus.Cancelled => "bg-secondary",
+            RegistrationStatus.Refunded => "bg-danger",
             _ => "bg-secondary"
         };
     }
@@ -593,6 +1017,7 @@
             RegistrationStatus.Confirmed => "Potvrzeno",
             RegistrationStatus.Paid => "Zaplaceno",
             RegistrationStatus.Cancelled => "Zrušeno",
+            RegistrationStatus.Refunded => "Vráceno",
             _ => "Neznámý"
         };
     }
